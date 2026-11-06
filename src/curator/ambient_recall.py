@@ -396,6 +396,7 @@ def probe_claradb(
     wis_ids = list(re.findall(r"\b(WIS-\d{3})\b", text, re.IGNORECASE))
     rdna_ids = list(re.findall(r"\b(RDNA-\d{3})\b", text, re.IGNORECASE))
     loop_ids = list(re.findall(r"\b(LOOP-\d{3}|VIBE-\d{3})\b", text, re.IGNORECASE))
+    scr_ids = list(re.findall(r"\b(SCR-\d{3})\b", text, re.IGNORECASE))
 
     for pattern, bkm_id, _ in BKM_FASTPATH_TRIGGERS:
         if pattern.search(text) and bkm_id not in bkms:
@@ -502,6 +503,25 @@ def probe_claradb(
             except Exception:
                 pass
 
+        if scr_ids:
+            try:
+                col_scr = client.get_collection("diagnostic_dna")
+                for s in scr_ids:
+                    s_up = s.upper()
+                    if s_up in seen_ids:
+                        continue
+                    r = col_scr.get(ids=[s_up])
+                    if r and r.get("metadatas"):
+                        seen_ids.add(s_up)
+                        meta = r["metadatas"][0]
+                        name = meta.get("name", "Diagnostic Tool")
+                        path = meta.get("path", "")
+                        status = meta.get("status", "ACTIVE")
+                        goal = meta.get("goal", "")
+                        results.append(f"### [{s_up}] {name} ({status})\nPath: `{path}`\nGoal: {goal}\n")
+            except Exception:
+                pass
+
         # 2. Vector Dynamic Distance Banding Across Dedicated Buckets
         words = set(re.findall(r"\w+", text.lower()))
         significant_words = {w for w in words if len(w) > 2 and w not in SHALLOW_PROMPTS and w not in SHALLOWER_WORDS}
@@ -519,6 +539,7 @@ def probe_claradb(
                     "inspiration_dna": 1,
                     "rdna": 1,
                     "loop_dna": 1,
+                    "diagnostic_dna": 2,
                 }
                 domain_counts = {d: 0 for d in domain_caps}
 
@@ -707,6 +728,33 @@ def probe_claradb(
                                 domain_counts["loop_dna"] += 1
                 except Exception:
                     pass
+
+                # Diagnostic DNA Bucket (Physician's Ledger [SCR-xxx])
+                try:
+                    col_diag = client.get_collection("diagnostic_dna")
+                    r_diag = col_diag.query(query_embeddings=[emb], n_results=4)
+                    d_dists = r_diag.get("distances", [[]])[0]
+                    if d_dists:
+                        min_d = min(d_dists)
+                        for i, dist in enumerate(d_dists):
+                            if domain_counts["diagnostic_dna"] >= domain_caps["diagnostic_dna"]:
+                                break
+                            meta = r_diag["metadatas"][0][i]
+                            scrid = meta.get("script_id") or r_diag["ids"][0][i]
+                            name = meta.get("name", "Diagnostic Tool")
+                            path = meta.get("path", "")
+                            status = meta.get("status", "ACTIVE")
+                            goal = meta.get("goal", "")
+                            if scrid in seen_ids:
+                                continue
+                            has_kw = any(w in name.lower() or w in path.lower() or w in goal.lower() for w in significant_words)
+                            if check_in_band(dist, min_d, has_kw):
+                                seen_ids.add(scrid)
+                                results.append(f"### [{scrid}] {name} ({status})\nPath: `{path}`\nGoal: {goal}\n")
+                                domain_counts["diagnostic_dna"] += 1
+                except Exception as e:
+                    if hook_errors is not None:
+                        hook_errors.append(f"diagnostic_dna query failed: {e}")
     except Exception as e:
         if hook_errors is not None:
             hook_errors.append(f"ClaraDB probe exception: {e}")

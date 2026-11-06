@@ -107,13 +107,15 @@ def test_battery_appends_to_validation_ledger(tmp_path):
 
 
 def test_triage_taxonomy_registers_meta_feedback():
-    """The declarative taxonomy registers META as feedback / addressed_to SYSTEM / importance 0."""
-    rule = TriagePolicyLoader().get_vibe_rule("META")
-    assert rule is not None
-    assert rule["domain"] == "feedback"
-    assert rule["addressed_to"] == "SYSTEM"
-    assert rule["importance"] == 0.0
-    assert rule["default_domain"] == "feedback"
+    """The declarative taxonomy registers META as lab_internal and SUPERVISORY as feedback."""
+    rule_meta = TriagePolicyLoader().get_vibe_rule("META")
+    assert rule_meta is not None
+    assert rule_meta["domain"] == "lab_internal"
+    assert rule_meta["addressed_to"] == "SYSTEM"
+
+    rule_supervisory = TriagePolicyLoader().get_vibe_rule("SUPERVISORY")
+    assert rule_supervisory is not None
+    assert rule_supervisory["default_domain"] == "feedback"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

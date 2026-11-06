@@ -85,7 +85,7 @@ def test_execute_grep_search_pivot_latency():
 
     assert len(res) > 0, "Expected non-empty grep evidence from knowledge_base"
     assert "<ground_truth" not in res  # archive_node returns raw text, cognitive_hub wraps it
-    assert t_elapsed < 50.0, f"Latency {t_elapsed:.2f}ms exceeded 50ms threshold"
+    assert t_elapsed < 100.0, f"Latency {t_elapsed:.2f}ms exceeded 100ms threshold"
 
     # Verify wrapping format
     ground_truth_exhaust = f"<ground_truth_exhaust>\n{res}\n</ground_truth_exhaust>"

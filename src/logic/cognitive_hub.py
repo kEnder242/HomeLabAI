@@ -3883,7 +3883,7 @@ class CognitiveHub:
 
             t_grep_start = time.perf_counter()
             expansion = await asyncio.to_thread(
-                execute_grep_search_pivot, query, 5, all_anchors or None
+                execute_grep_search_pivot, query, 30, all_anchors or None
             )
             t_grep_duration = max(0.001, round(time.perf_counter() - t_grep_start, 3))
             if expansion:

@@ -834,13 +834,13 @@ def compute_mmr_ranking(
     return selected
 
 
-def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors: list[str] | None = None) -> str:
-    """[FEAT-451 / Story 109.9 / Story 110.15] Autonomous Search Pivot Loop via fast Ripgrep.
+def execute_grep_search_pivot(query: str, max_matches: int = 30, curated_anchors: list[str] | None = None) -> str:
+    """[FEAT-451 / FEAT-668 / FEAT-685] Autonomous Search Pivot Loop via fast Bucketed Ripgrep.
     ArXiv: 2601.11888 (Agentic-R).
     Fires in Stage 3 to hydrate exact physical field-note lines for Deep Thought.
-    Extracts high-entropy technical tokens from query, triage, and Brain's bedrock grounding.
-    Uses balanced anchor quotas and word-boundary matching to prevent high-frequency terms
-    from starving specific hardware entities."""
+    Uses discrete per-anchor buckets with dynamic budget splitting (target: max_matches, min: 2/anchor)
+    and whole-word boundaries on discrete alphanumeric identifiers (^[A-Z0-9_.]{2,6}$)
+    to prevent high-frequency terms ('mailbox') from drowning out rare hardware tables ('BERT', 'HEST')."""
     import re
 
     stop_words = {
@@ -869,6 +869,9 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
         if a and a.upper() not in stop_words and len(a) > 1 and not a.startswith("CHUNK-")
     ]
 
+    if curated_anchors is not None and not curated_clean:
+        return ""
+
     # Prioritize: uppercase acronyms / hex / filenames first, then capitalized entities
     all_candidates = list(dict.fromkeys(extracted_query_anchors + curated_clean))
     acronyms = [a for a in all_candidates if a.isupper() or a.startswith("0x") or "." in a]
@@ -876,11 +879,16 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
     anchors = (acronyms + entities)[:5]
 
     if not anchors:
-        fallback = [
-            w for w in query.split()
-            if len(w) > 3 and w.upper() not in stop_words
-        ]
-        anchors = fallback[:3]
+        if curated_anchors is None:
+            fallback = [
+                w for w in query.split()
+                if len(w) > 4
+                and w.upper() not in stop_words
+                and w.lower() not in {"about", "there", "where", "which", "hello", "today", "thanks", "please", "things", "doing"}
+            ]
+            anchors = fallback[:3]
+        else:
+            return ""
 
     if not anchors:
         return ""
@@ -902,15 +910,18 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
         "!status.json",
     ]
 
-    hits = []
+    # [FEAT-685] Discrete Bucketed Retrieval with Dynamic Quota Allocation
+    # Divides total max_matches budget evenly across active anchors, with minimum cap of 2 per bucket.
+    bucket_allocation = max(2, max_matches // len(anchors))
+    anchor_buckets = {anchor: [] for anchor in anchors}
     seen_lines = set()
 
-    # Pass 1: Round-robin 1 hit per anchor to ensure full diversity across all entities
-    # (prevents high-frequency terms like 'mailbox' from starving rare anchors like 'HEST'/'MCA')
+    # Pass 1: Independent Bucketed Extraction (isolated per anchor)
     for anchor in anchors:
-        if len(hits) >= max_matches:
-            break
-        is_word_boundary = anchor.isupper() or len(anchor) <= 5
+        # [BKM-015:APPROVED_REGEX] Generic token syntax rule: enforces whole-word boundary (-w) on discrete identifiers
+        is_word_boundary = bool(
+            re.match(r"^[A-Z0-9_\.]{2,6}$", anchor) or anchor.isupper() or len(anchor) <= 5
+        )
         for d in data_dirs:
             if not os.path.exists(d):
                 continue
@@ -919,7 +930,7 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
                 if is_word_boundary:
                     cmd.append("-w")
                 cmd.extend([
-                    "-m", "1",
+                    "-m", str(bucket_allocation),
                     "--no-heading",
                     "-N",
                     "--glob", "*.txt",
@@ -940,19 +951,27 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
                             and len(clean_line) < 300
                         ):
                             seen_lines.add(clean_line)
-                            hits.append(f"- [{anchor}] {clean_line}")
-                            break
+                            anchor_buckets[anchor].append(f"- [{anchor}] {clean_line}")
+                            if len(anchor_buckets[anchor]) >= bucket_allocation:
+                                break
             except Exception:
                 pass
-            if any(h.startswith(f"- [{anchor}]") for h in hits):
+            if len(anchor_buckets[anchor]) >= bucket_allocation:
                 break
 
-    # Pass 2: If headroom remains, backfill secondary matches up to max_matches
-    if len(hits) < max_matches:
+    # Pass 2: Overflow Cascade
+    # If any anchor had fewer hits than its allocation, the remaining budget cascades
+    # to backfill other active anchors up to max_matches.
+    collected_hits = sum(len(b) for b in anchor_buckets.values())
+    headroom = max_matches - collected_hits
+
+    if headroom > 0:
         for anchor in anchors:
-            if len(hits) >= max_matches:
+            if headroom <= 0:
                 break
-            is_word_boundary = anchor.isupper() or len(anchor) <= 5
+            is_word_boundary = bool(
+                re.match(r"^[A-Z0-9_\.]{2,6}$", anchor) or anchor.isupper() or len(anchor) <= 5
+            )
             for d in data_dirs:
                 if not os.path.exists(d):
                     continue
@@ -961,7 +980,7 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
                     if is_word_boundary:
                         cmd.append("-w")
                     cmd.extend([
-                        "-m", "3",
+                        "-m", str(headroom + len(anchor_buckets[anchor])),
                         "--no-heading",
                         "-N",
                         "--glob", "*.txt",
@@ -982,13 +1001,19 @@ def execute_grep_search_pivot(query: str, max_matches: int = 5, curated_anchors:
                                 and len(clean_line) < 300
                             ):
                                 seen_lines.add(clean_line)
-                                hits.append(f"- [{anchor}] {clean_line}")
-                                if len(hits) >= max_matches:
+                                anchor_buckets[anchor].append(f"- [{anchor}] {clean_line}")
+                                headroom -= 1
+                                if headroom <= 0:
                                     break
                 except Exception:
                     pass
-                if len(hits) >= max_matches:
+                if headroom <= 0:
                     break
+
+    # Flatten buckets preserving diversity (all anchors represented)
+    hits = []
+    for anchor in anchors:
+        hits.extend(anchor_buckets[anchor])
 
     if hits:
         return "[AGENTIC_R_GREP_PIVOT]:\n" + "\n".join(hits)
