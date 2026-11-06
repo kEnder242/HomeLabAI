@@ -28,7 +28,6 @@ PRE_TRIAGE_COLLECTIONS = [
     "long_term_wisdom",
     "career_ledger",
     "focal_dna",
-    "short_term_stream",
     "lab_journal",
 ]
 

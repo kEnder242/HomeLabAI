@@ -423,12 +423,15 @@ def resolve_collection_scope(
 
     if domain:
         domain_lower = domain.lower()
-        if domain_lower in ("exp_tlm", "silicon"):
+        if domain_lower in ("exp_tlm", "silicon", "tlm"):
             if "artifact_vault" not in base_collections:
                 base_collections.append("artifact_vault")
-        elif domain_lower in ("exp_bkm", "sre"):
+        elif domain_lower in ("dna", "exp_dna", "exp_bkm", "sre"):
             if "behavioral_dna" not in base_collections:
                 base_collections.append("behavioral_dna")
+        elif domain_lower in ("forensics", "exp_for"):
+            if "artifact_vault" not in base_collections:
+                base_collections.append("artifact_vault")
         elif domain_lower in ("lab_history", "career"):
             if "career_ledger" not in base_collections:
                 base_collections.append("career_ledger")

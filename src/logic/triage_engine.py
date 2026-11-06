@@ -281,7 +281,11 @@ def is_control_plane_feedback(t_parsed: dict[str, Any]) -> bool:
     if domain in (
         "lab_internal",
         "exp_tlm",
+        "tlm",
+        "dna",
+        "exp_dna",
         "exp_bkm",
+        "forensics",
         "exp_for",
         "lab_history",
         "dream_stream",
