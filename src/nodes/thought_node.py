@@ -56,6 +56,31 @@ async def update_whiteboard(content: str) -> str:
 
 
 @mcp.tool()
+async def deep_think(
+    task: str = "",
+    query: str = "",
+    context: str = "",
+    behavioral_guidance: str = "",
+    temperature: float = 0.0,
+    request_id: str = "default",
+    max_tokens: int = 1500,
+) -> str:
+    """[FEAT-240.2 / Phase 3 #3.3] Explicit Deep Thought synthesis tool alias."""
+    effective_query = task or query
+    full_response = ""
+    async for token in node.generate_response(
+        effective_query,
+        context,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        request_id=request_id,
+    ):
+        if "The local engine is warming its anchors" not in token:
+            full_response += token
+    return full_response.strip()
+
+
+@mcp.tool()
 async def ping_engine(force: bool = False) -> str:
     """[FEAT-192] Verify and force engine readiness."""
     success, msg = await node.ping_engine(force=force)

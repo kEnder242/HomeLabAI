@@ -108,9 +108,13 @@ except Exception:
 
 def get_safe_collection(name):
     try:
-        return chroma_client.get_or_create_collection(name=name)
-    except ValueError:
         return chroma_client.get_collection(name=name)
+    except Exception:
+        try:
+            return chroma_client.get_or_create_collection(name=name)
+        except Exception as e:
+            logging.warning(f"[ARCHIVE] get_safe_collection failed for '{name}': {e}")
+            return None
 
 
 stream = get_safe_collection(COLLECTION_STREAM)
@@ -1014,20 +1018,21 @@ async def get_context(
                 "sources": [],
             })
 
-        async def _query_one_collection(session, name, query_text, limit):
-            url = f"http://127.0.0.1:8001/api/v1/collections/{name}/query"
-            payload = {
-                "query_texts": [query_text],
-                "n_results": limit,
-                "include": ["metadatas", "distances", "documents"],
-            }
+        def _sync_query_one_collection(name, query_text, limit):
             try:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return data, name
+                col = get_safe_collection(name)
+                if col is None:
                     return None, name
-            except Exception:
+                data = col.query(
+                    query_texts=[query_text],
+                    n_results=limit,
+                    include=["metadatas", "distances", "documents"],
+                )
+                return data, name
+            except Exception as e:
+                logging.warning(
+                    f"[ARCHIVE] Native Chroma query failed for collection '{name}': {e}"
+                )
                 return None, name
 
         # [FEAT-442] Shared result processor for HyDE fallback re-query
@@ -1060,9 +1065,9 @@ async def get_context(
                     )
             return collected
 
-        async def _query_multi_collections(session, q_text, limit):
+        async def _query_multi_collections(q_text, limit):
             tasks = [
-                _query_one_collection(session, name, q_text, limit)
+                asyncio.to_thread(_sync_query_one_collection, name, q_text, limit)
                 for name in multi_collection_names
             ]
             raw = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1071,12 +1076,11 @@ async def get_context(
         # [FEAT-442/447] First pass: search with HyDE-refined query
         multi_candidates = []
         try:
-            async with aiohttp.ClientSession() as session:
-                multi_candidates = await _query_multi_collections(
-                    session, _search_query, fetch_limit
-                )
-        except Exception:
-            pass
+            multi_candidates = await _query_multi_collections(
+                _search_query, fetch_limit
+            )
+        except Exception as e:
+            logging.warning(f"[ARCHIVE] _query_multi_collections pass 1 failed: {e}")
 
         multi_candidates.sort(key=lambda x: x["distance"])
 
@@ -1093,12 +1097,11 @@ async def get_context(
             )
             multi_candidates = []
             try:
-                async with aiohttp.ClientSession() as session:
-                    multi_candidates = await _query_multi_collections(
-                        session, query, fetch_limit
-                    )
-            except Exception:
-                pass
+                multi_candidates = await _query_multi_collections(
+                    query, fetch_limit
+                )
+            except Exception as e:
+                logging.warning(f"[ARCHIVE] _query_multi_collections pass 2 failed: {e}")
             multi_candidates.sort(key=lambda x: x["distance"])
             _qpr_fell_back = True
 

@@ -1133,8 +1133,14 @@ class FoyerRouter:
             import logic.cognitive_hub
             import logic.speculative_triage
 
-            # [STORY 99.3] Reconcile silicon topology before cognitive hub so
-            # module-level seat endpoints refresh from infrastructure.json.
+            # [STORY 99.3 / Phase 3 #1.2] Reconcile silicon topology and resident modules
+            # before cognitive hub so module-level seat endpoints refresh.
+            if "nodes.loader" in sys.modules:
+                import nodes.loader
+                importlib.reload(nodes.loader)
+            if "logic.traversal_dispatcher" in sys.modules:
+                import logic.traversal_dispatcher
+                importlib.reload(logic.traversal_dispatcher)
             importlib.reload(logic.speculative_triage)
             importlib.reload(logic.cognitive_hub)
             if "curator.ambient_recall" in sys.modules:
