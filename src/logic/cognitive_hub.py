@@ -481,18 +481,18 @@ def _two_mice_interest_band(interest: float) -> str:
 
 
 def calculate_pacing_ceiling(node_name: str, interest: float) -> int:
-    """[FEAT-523 / BKM-015] Calculate headroom ceiling token budget purely from interest.
+    """[FEAT-523 / BKM-015 / Option A] Calculate headroom ceiling token budget purely from interest.
 
-    Under [FEAT-523], interest is the sole shape of the turn. Arbitrary per-node base
-    floors (legacy 300/80/60 offsets) are excised so fuel naturally tapers to 0 when
-    interest is exhausted. Across all sovereign personas, budget is strictly proportional:
-        ceiling = max(0, int(interest * max_token_ceiling))
+    Under [FEAT-523], interest is the sole shape of the turn. Fuel is an unbounded positive
+    currency where peer boosts compound freely without an arbitrary 1.0 ceiling.
+    Across all sovereign personas, budget is strictly proportional:
+        ceiling = max(16, int(round(interest * max_token_ceiling)))
     """
-    interest_val = max(0.0, min(1.0, float(interest)))
+    interest_val = max(0.0, float(interest))
     if interest_val <= 0.0:
         return 0
 
-    # [FEAT-523] Default max token ceiling across sovereign lab personas
+    # [FEAT-523] Default max token ceiling across sovereign lab personas (1.0 = 1000 tokens)
     max_token_ceiling = 1000
     return max(16, int(round(interest_val * max_token_ceiling)))
 
@@ -1624,7 +1624,7 @@ class CognitiveHub:
                         ) and not self._boosted_interest:
                             self._boosted_interest = True
                             old_interest = self.current_interest
-                            self.current_interest = min(1.0, self.current_interest + 0.3)
+                            self.current_interest = round(max(0.0, self.current_interest + 0.3), 2)
                             logging.info(
                                 f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
                             )
@@ -1661,7 +1661,7 @@ class CognitiveHub:
                 ) and not self._boosted_interest:
                     self._boosted_interest = True
                     old_interest = self.current_interest
-                    self.current_interest = min(1.0, self.current_interest + 0.3)
+                    self.current_interest = round(max(0.0, self.current_interest + 0.3), 2)
                     logging.info(
                         f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
                     )
@@ -1681,7 +1681,7 @@ class CognitiveHub:
                 ) and not self._boosted_interest:
                     self._boosted_interest = True
                     old_interest = self.current_interest
-                    self.current_interest = min(1.0, self.current_interest + 0.3)
+                    self.current_interest = round(max(0.0, self.current_interest + 0.3), 2)
                     logging.info(
                         f"[HUB] [FEAT-238] Council of Hemispheres: Node {node_id} boosted interest from {old_interest:.2f} to {self.current_interest:.2f}."
                     )
@@ -2090,9 +2090,9 @@ class CognitiveHub:
         interest_boost = springboard.get("interest_boost", 0.0)
 
         effective_importance = max(importance, importance_floor)
-        # [FEAT-523 / Sprint 103 Story 103.5] Continuous Interest Multiplier (penalty-free)
+        # [FEAT-523 / Sprint 103 Story 103.5] Continuous Interest Multiplier (penalty-free, uncapped above 0.0)
         base_interest = (intrigue * 0.4) + (effective_importance * 0.6)
-        final_interest = min(1.0, max(0.0, base_interest + interest_boost))
+        final_interest = round(max(0.0, base_interest + interest_boost), 2)
         self.current_interest = final_interest
         t_parsed["effective_importance"] = effective_importance
         t_parsed["calculated_interest"] = final_interest
@@ -2562,7 +2562,7 @@ class CognitiveHub:
         # Calculate dynamic scaling based on length
         importance = interest
         if len(text) > 800:
-            importance = min(1.0, importance + 0.2)
+            importance = round(max(0.0, importance + 0.2), 2)
 
         if importance <= 0.5:
             logging.info(
@@ -2970,10 +2970,10 @@ class CognitiveHub:
                 if "<boost_interest>" in raw_hyde or "<upvote>" in raw_hyde:
                     should_upvote = True
 
-                # [STORY 103.18 / FEAT-238] Council of Hemispheres: Sovereign Upvote
+                # [STORY 103.18 / FEAT-238] Council of Hemispheres: Sovereign Upvote (Option A uncapped)
                 if should_upvote:
                     old_int = getattr(self, "current_interest", 0.5)
-                    self.current_interest = min(1.0, old_int + 0.20)
+                    self.current_interest = round(max(0.0, old_int + 0.20), 2)
                     logging.info(
                         f"[HUB] [FEAT-238] Council of Hemispheres: Pinky boosted interest from {old_int:.2f} to {self.current_interest:.2f}"
                     )
@@ -3407,9 +3407,9 @@ class CognitiveHub:
         interest_boost = springboard.get("interest_boost", 0.0)
 
         effective_importance = max(importance, importance_floor)
-        # [FEAT-523 / Sprint 103] Penalty-free continuous interest multiplier
+        # [FEAT-523 / Sprint 103] Penalty-free continuous interest multiplier (Option A uncapped)
         base_interest = (intrigue * 0.4) + (effective_importance * 0.6)
-        final_interest = min(1.0, max(0.0, base_interest + interest_boost))
+        final_interest = round(max(0.0, base_interest + interest_boost), 2)
         t_parsed["effective_importance"] = effective_importance
         t_parsed["calculated_interest"] = final_interest
 
@@ -3789,7 +3789,7 @@ class CognitiveHub:
 
         if candidate_count > 0 and (kept_ids or drop_ids):
             if kept_count >= 1 or "<boost_interest>" in (brain_grounding or "") or "<upvote>" in (brain_grounding or ""):
-                boosted_interest = min(1.0, gate_interest + 0.20)  # Positive Moat
+                boosted_interest = round(max(0.0, gate_interest + 0.20), 2)  # Positive Moat
                 logging.info(f"[MOAT] Positive Moat: {kept_count}/{candidate_count} chunks validated. Boosted interest: {boosted_interest:.2f}")
             else:
                 boosted_interest = max(0.0, min(0.30, gate_interest - 0.25))  # Negative Moat
@@ -3797,7 +3797,7 @@ class CognitiveHub:
         else:
             # Neutral Moat: check Brain's evidential signaling
             if "<boost_interest>" in (brain_grounding or "") or "<upvote>" in (brain_grounding or ""):
-                boosted_interest = min(1.0, gate_interest + 0.20)
+                boosted_interest = round(max(0.0, gate_interest + 0.20), 2)
                 logging.info(f"[HUB] Council of Hemispheres: Brain boosted interest from {gate_interest:.2f} to {boosted_interest:.2f}")
             elif "<damp_interest>" in (brain_grounding or "") or "<downvote>" in (brain_grounding or ""):
                 boosted_interest = max(0.0, gate_interest - 0.25)
