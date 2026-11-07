@@ -597,6 +597,26 @@
 * **Documentation Synchronization**:
   * Google Doc ReBAR ledger: `ENGINEERING_LEDGER_Z87_REBAR` (`1MeEjvUt1k01S-JwLssM-j_Xoq4BFwfbvY6z3AU50sTc`), Section 26.
 
+---
+
+## LAB-122: Zero-Host-Allocation Hybrid Inference Topology & Direct VRAM Ingestion Standard
+
+* **Objective**: Eliminate host RAM exhaustion and disk swap ballooning during dual-GPU heterogeneous inference (NVIDIA RTX 2080 Ti CUDA + Intel Arc B580 Vulkan loopback RPC).
+* **Date**: November 7, 2026.
+* **Root Cause & The Memory Trap**:
+  * Specifying `-lm none` in `llama-server` disables memory mapping and forces POSIX anonymous heap `malloc()` for all model weights. On a 15GB DDR3 host running a 22GB GGUF model, this forced the Linux kernel to swap out 6.9+ GB of process memory to disk (`/dev/sda5`, `/speedy/swapfile`), degrading system responsiveness and causing severe thrashing.
+* **The Zero-Host Standard**:
+  1. **Mandate `-lm auto`**: Forces NVMe memory mapping (`mmap`). Model weights are streamed directly from SSD to device VRAM without persistent host heap duplication. Unneeded host pages remain clean and are evicted instantly under memory pressure without disk swap allocation.
+  2. **Enforce `--no-host` (`LLAMA_ARG_NO_HOST=1`)**: Bypasses secondary host-side fallback buffer allocation for tensors resident in GPU `DEVICE_LOCAL` VRAM.
+  3. **RPC Boundary Separation**: Intel Arc B580 is isolated in `ggml-rpc-server` on loopback port 50052 (`build_vulkan/bin/ggml-rpc-server -d Vulkan0 -p 50052`), maintaining ~54MB host footprint.
+  4. **Port 8088 Liveness Gate**: Launchers (`start_vllm.sh`) must verify `curl -s http://127.0.0.1:8088/v1/models` before initiating engine ignition to prevent duplicate background instance spawning.
+* **Measured Silicon Metrics**:
+  * `llama-server` Host RSS: Clamped to ~600 MB (from >10 GB thrash).
+  * `llama-server` Swap: Clamped to ~127 MB (from 6,900 MB).
+  * Turing CUDA Prefill: **96.4 tok/s**.
+  * Autoregressive Generation: **32.5 tok/s**.
+
+
 
 
 

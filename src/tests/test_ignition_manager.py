@@ -54,27 +54,18 @@ class TestIgnitionManagerKillGuardrail:
         assert callable(getattr(manager, '_kill_stale_vllm'))
 
     def test_kill_stale_vllm_calls_subprocess(self, manager):
-        """Test that _kill_stale_vllm calls the expected subprocess commands."""
+        """[Story 111.11] Test that _kill_stale_vllm delegates to engine_ctl.sh stop or legacy fallback."""
         with patch('subprocess.run') as mock_subprocess, \
              patch('os.path.exists', return_value=True), \
              patch('builtins.open', MagicMock()), \
              patch('psutil.pid_exists', return_value=True), \
-             patch('psutil.Process') as mock_process, \
              patch('time.sleep'):
             
-            mock_file = MagicMock()
-            mock_file.read.return_value = '12345'
-            mock_file.__enter__.return_value = mock_file
-            mock_file.__exit__.return_value = None
+            manager._kill_stale_vllm()
             
-            with patch('builtins.open', return_value=mock_file):
-                manager._kill_stale_vllm()
-                
-                assert mock_subprocess.call_count >= 3
-                calls = [call.args[0] for call in mock_subprocess.call_args_list]
-                assert any('sudo' in str(call) and 'kill' in str(call) and '-9' in str(call) for call in calls)
-                assert any('sudo' in str(call) and 'pkill' in str(call) and 'vllm.entrypoints.openai.api_server' in str(call) for call in calls)
-                assert any('sudo' in str(call) and 'pkill' in str(call) and 'VLLM::EngineCore' in str(call) for call in calls)
+            assert mock_subprocess.call_count >= 1
+            calls = [call.args[0] for call in mock_subprocess.call_args_list]
+            assert any('engine_ctl.sh' in str(call) and 'stop' in str(call) for call in calls)
 
     def test_kill_stale_vllm_signature(self, manager):
         """Test that _kill_stale_vllm is callable with zero required arguments."""

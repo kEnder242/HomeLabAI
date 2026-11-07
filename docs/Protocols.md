@@ -1080,17 +1080,37 @@ Autonomous agent speed must never come at the expense of operator transparency. 
 Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** that answer specific cognitive queries. Domains are equal horizontal peers, not a hierarchical ladder. Memory items that drift or are discovered in the wrong container must be horizontally migrated (re-bucketed) to preserve semantic retrieval precision across CLaRaDB port 8001.
 
 ### 2. The Universal Taxonomy Matrix (How vs. Why vs. What vs. When)
-| Bucket | Prefix | Cognitive Purpose | Primary Question | Source of Record |
-| :--- | :--- | :--- | :--- | :--- |
-| **Inspirations** | `INS-xxx` *(alias: `PHL-xxx`)* | Conceptual Worldviews, Invariant Epistemology & Spark Insights | **WHY (First Principle)** | `inspiration_data.json` / `philosophy_data.json` $\rightarrow$ `philosophy_dna` |
-| **Wisdom** | `WIS-xxx` | Practical Lessons, War Stories & Failure Scars | **WHY (Empirical)** | `stories.html` $\rightarrow$ `wisdom_data.json` $\rightarrow$ `wisdom_dna` |
-| **Protocols** | `BKM-xxx` | Prescriptive Rules & Actionable Directives | **HOW (Mandate)** | `Protocols.md` $\rightarrow$ `behavioral_dna` |
-| **Features** | `FEAT-xxx` | Registered Capabilities & Architectural Specs | **WHAT (Mechanics)** | `FeatureTracker.md` $\rightarrow$ `feature_dna` |
-| **Vibes** | `VIBE-xxx` | Behavioral Persona & Conversational Tonality | **WHO (Tone)** | `vibe_data.json` / `FeatureTracker.md` $\rightarrow$ `vibe_dna` |
-| **Discoveries**| `DISC-xxx` | Distillation Insights & Subconscious Epiphanies | **WHAT (Insight)** | `discovery` collection $\rightarrow$ `DISC` ledger |
-| **Sprint DNA** | `SPR-xxx` | Active Sprint Plans, Story Cards & Decoupled ASTs | **WHEN (Active)** | `SPRINT_PLAN_*.md` $\rightarrow$ `sprint_dna` |
-| **Reverse DNA**| `RDNA-xxx` | Pre-Processed Question Space & HyDE Bypass | **WHEN / ASK** | `rdna_questions.json` $\rightarrow$ `rdna` |
-| **Artifacts** | `ART-xxx` | External Google Drive / Doc Links & Assets | **WHERE (Asset)** | `artifact_vault` collection |
+| Bucket | Prefix | Cognitive Purpose | Primary Question | Chroma Collection | Source of Record |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Inspirations** | `INS-xxx` *(alias: `PHL-xxx`)* | Conceptual Worldviews, Invariant Epistemology & Spark Insights | **WHY (First Principle)** | `inspiration_dna` / `philosophy_dna` | `Portfolio_Dev/dna/inspiration_data.json` |
+| **Wisdom** | `WIS-xxx` | Practical Lessons, War Stories & Failure Scars | **WHY (Empirical)** | `wisdom_dna` | `Portfolio_Dev/dna/wisdom_data.json` |
+| **Protocols** | `BKM-xxx` | Prescriptive Rules & Operational Directives | **HOW (Mandate)** | `behavioral_dna` | `HomeLabAI/docs/Protocols.md` |
+| **Infrastructure** | `LAB-xxx` | Physical Hardware Laws, Silicon Topology & Milestones | **HOW (Physical)** | `behavioral_dna` *(type: `INFRA`)* | `HomeLabAI/docs/LAB_INFRASTRUCTURE.md` |
+| **Features** | `FEAT-xxx`, `LAB-xxx` | Registered Capabilities, Architectural Specs & Engine Levers | **WHAT (Mechanics)** | `feature_dna` | `Portfolio_Dev/FeatureTracker.md` |
+| **Vibes** | `VIBE-xxx` | Behavioral Persona & Conversational Tonality | **WHO (Tone)** | `vibe_dna` | `Portfolio_Dev/dna/vibe_data.json` |
+| **Diagnostics** | `SCRIPT-xxx` | Diagnostic Scripts, Benchmarks & Validation Tools | **HOW (Diagnostic)** | `diagnostic_dna` | `HomeLabAI/docs/DIAGNOSTIC_SCRIPT_MAP.md` |
+| **Loop Ledger** | `LOOP-xxx` | Self-Correction & Feedback Loop Registries | **HOW (Feedback)** | `loop_dna` | `Portfolio_Dev/field_notes/data/foyer_feedback_ledger.jsonl` |
+| **Discoveries** | `DISC-xxx` | Distillation Insights & Subconscious Epiphanies | **WHAT (Insight)** | `discovery` | `Portfolio_Dev/field_notes/data/` |
+| **Sprint DNA** | `SPR-xxx` | Active Sprint Plans, Story Cards & ASTs | **WHEN (Active)** | `sprint_dna` | `Portfolio_Dev/docs/sprints/active/` & `archive/` |
+| **Reverse DNA** | `RDNA-xxx` | Pre-Processed Question Space & HyDE Bypass | **WHEN / ASK** | `rdna` | `Portfolio_Dev/dna/rdna_questions.json` |
+| **Artifacts** | `ART-xxx` | External Google Drive / Doc Links & Assets | **WHERE (Asset)** | `artifact_vault` | `Portfolio_Dev/dna/artifact_vault.json` |
+
+### 2.1 The Canonical Physical Source-of-Record & Ingestion Map
+All automated memory ingestion across ChromaDB port 8001 is synchronized via three primary orchestrators: `sync_chroma_dna.py`, `sync_sprint_dna.py`, and `sync_paper_dna.py`. Agents must use this physical map to locate sources of record across repositories:
+
+| ChromaDB Collection | Repository | Source File Path (Relative to Repo Root) | Synchronizer Script |
+| :--- | :--- | :--- | :--- |
+| `feature_dna` | `Portfolio_Dev` | `FeatureTracker.md` | `sync_chroma_dna.py` |
+| `behavioral_dna` (`BKM`) | `HomeLabAI` | `docs/Protocols.md` | `sync_chroma_dna.py` |
+| `behavioral_dna` (`INFRA`) | `HomeLabAI` | `docs/LAB_INFRASTRUCTURE.md` | `sync_chroma_dna.py` |
+| `wisdom_dna` | `Portfolio_Dev` | `dna/wisdom_data.json` | `sync_chroma_dna.py` |
+| `inspiration_dna` | `Portfolio_Dev` | `dna/inspiration_data.json` | `sync_chroma_dna.py` |
+| `vibe_dna` | `Portfolio_Dev` | `dna/vibe_data.json` | `sync_chroma_dna.py` |
+| `rdna` | `Portfolio_Dev` | `dna/rdna_questions.json` | `sync_chroma_dna.py` |
+| `loop_dna` | `Portfolio_Dev` | `field_notes/data/foyer_feedback_ledger.jsonl` | `sync_chroma_dna.py` |
+| `diagnostic_dna` | `HomeLabAI` | `docs/DIAGNOSTIC_SCRIPT_MAP.md` | `sync_chroma_dna.py` |
+| `sprint_dna` | `Portfolio_Dev` | `docs/sprints/active/` & `archive/` | `sync_sprint_dna.py` |
+| `paper_dna_*` | `Portfolio_Dev` | `curated_papers/` | `sync_paper_dna.py` |
 
 ### 3. The Invariant Rules
 1. **Separation of Bucket vs. Topic:** Never confuse the **DNA Bucket** (e.g. `BKM`) with the **Subject Topic Tag** (e.g. `#systems_architecture`, `#security`).
@@ -1098,6 +1118,7 @@ Federated Lab memory is categorized into distinct, peer-level **DNA Buckets** th
 3. **Horizontal Re-Bucketing:** If an item is discovered in the wrong container (e.g. a raw discovery that is actually an operational mandate), it must be horizontally migrated to its rightful bucket with bidirectional `explicit_links` preserved.
 4. **JITC Retrieval Law:** Agents must query specific taxonomy buckets on-demand via `get_protocol(bkm_id="BKM-xxx")` or `query_dna(collection="...")` rather than loading global taxonomy tables into primary agent prompt context.
 5. **Single-Library & 24/7 ChromaDB Daemon Mesh:** All ambient vector retrieval for Layer 1 strategic planning (whether running via AGY CLI or Cloud OpenCode orchestrators like Prometheus/Sisyphus) MUST consume the single canonical library (`HomeLabAI/src/curator/ambient_recall.py`) querying the 24/7 resident ChromaDB service on port 8001 (`chroma-server.service`). Never fork duplicate hook scripts across `.agents/scripts/` or `config/hooks/`, and never attach pre-turn ambient hooks to Layer 2/3 local execution workers.
+6. **Physical Source Boundary Law:** Never assume all DNA lives in `Portfolio_Dev/dna/`. Physical silicon laws, daemon architecture, and operational mandates reside in `HomeLabAI/docs/` (`LAB_INFRASTRUCTURE.md`, `Protocols.md`), while conceptual specs, historical wisdom, and sprint plans reside in `Portfolio_Dev/`. Agents must consult the Canonical Physical Source Map in §2.1 before initiating cross-repository file edits or synchronization runs.
 
 ---
 
