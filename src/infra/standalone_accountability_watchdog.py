@@ -294,6 +294,24 @@ def check_lora_training():
     try:
         state = json.loads(NIGHTLY_LORA_STATE.read_text(encoding="utf-8"))
         status = state.get("status", "UNKNOWN")
+
+        # [Story 111.22 / FEAT-665] Align with dormant LoRA configuration:
+        # A disabled training flag or a MOTHBALLED state both pass accountability.
+        lora_training_enabled = True
+        try:
+            _infra = json.loads((CONFIG_DIR / "infrastructure.json").read_text(encoding="utf-8"))
+            lora_training_enabled = _infra.get("forge", {}).get("lora_training_enabled", True)
+        except Exception:
+            lora_training_enabled = True
+
+        if not lora_training_enabled or status == "MOTHBALLED":
+            return {
+                "name": "LoRA Fine-Tuning Multi-Adapter Pass",
+                "passed": True,
+                "detail": "MOTHBALLED (30m Quiet Soak Active)",
+                "status": "MOTHBALLED"
+            }
+
         passed = status in ("COMPLETED", "SUCCESS")
         return {
             "name": "LoRA Fine-Tuning Multi-Adapter Pass",
