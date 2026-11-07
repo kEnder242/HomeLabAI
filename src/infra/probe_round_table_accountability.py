@@ -130,13 +130,30 @@ def extract_judge_score(event_id: str, max_lookback_s: float = 60.0) -> Tuple[fl
                     continue
 
         # If sovereign judges failed over to stubs, do not allow Brain's unverified self-assessment to mask it
-        has_sovereign_judge = any("pinky" in e.get("source", "").lower() or "thought" in e.get("source", "").lower() for e in matched_entries)
+        has_sovereign_judge = any(
+            "pinky" in e.get("source", "").lower() or "thought" in e.get("source", "").lower()
+            for e in matched_entries
+        )
         if stub_records and not has_sovereign_judge:
-            stub_reason = stub_records[-1].get("critique") or stub_records[-1].get("status", "STANDBY_STUB")
+            stub_reason = (
+                stub_records[-1].get("critique")
+                or stub_records[-1].get("status", "STANDBY_STUB")
+            )
             return 0.0, f"[SOVEREIGN_JUDGES_OFFLINE] {stub_reason}"
 
         if not matched_entries:
             return 0.0, f"No genuine online judge record found for event {event_id}"
+
+        # [Story 111.20 / FEAT-665] Sovereign quorum enforcement:
+        # Require >= 1 vocal sovereign judge seat (Pinky or Deep Thought) for any PASS verdict.
+        # If all sovereign seats returned STANDBY_STUB (or no sovereign seat vocalized at all),
+        # fail immediately with score 0.0 -- eradicates false PASS on non-sovereign self-assessment.
+        if not has_sovereign_judge:
+            return (
+                0.0,
+                f"[SOVEREIGN_QUORUM_ABSENT] No vocal sovereign judge "
+                f"(Pinky/Deep Thought) recorded for event {event_id}",
+            )
 
         # Multi-stage prioritization per [FEAT-608]:
         # 1. Prefer terminal Stage 5 delivered response
@@ -193,6 +210,7 @@ async def probe_deliberation_circuit(
                     "latency_ms": round((time.perf_counter() - start) * 1000.0, 2),
                     "critic_score": 0.0,
                     "error": f"HTTP {resp.status} on /inject",
+                    "sovereign_quorum": False,
                 }
             data = await resp.json()
             event_id = data.get("id")
@@ -202,6 +220,7 @@ async def probe_deliberation_circuit(
                     "latency_ms": round((time.perf_counter() - start) * 1000.0, 2),
                     "critic_score": 0.0,
                     "error": "No event ID returned by Foyer /inject",
+                    "sovereign_quorum": False,
                 }
 
         # Step 2: Poll stage ledger & judge backpressure for ground-truth physical completion
@@ -247,6 +266,7 @@ async def probe_deliberation_circuit(
                 "triage_routing": "TIMEOUT",
                 "critic_score": 0.0,
                 "error": f"Triage stage did not complete within {max_wait_seconds}s",
+                "sovereign_quorum": False,
             }
 
         if judge_score > 0.0:
@@ -258,6 +278,7 @@ async def probe_deliberation_circuit(
                 "triage_routing": triage_routing,
                 "critic_score": round(judge_score, 2),
                 "error": None if passed else f"Judge score {judge_score:.2f} < {min_critic:.2f} ({judge_critique})",
+                "sovereign_quorum": True,
             }
 
         # Fallback if triage executed but judge timed out or failed over
@@ -268,6 +289,7 @@ async def probe_deliberation_circuit(
             "triage_routing": triage_routing,
             "critic_score": 0.0,
             "error": "Triage succeeded, but no genuine online judicial score was recorded",
+            "sovereign_quorum": False,
         }
 
     except Exception as e:
@@ -277,6 +299,7 @@ async def probe_deliberation_circuit(
             "latency_ms": round(elapsed_ms, 2),
             "critic_score": 0.0,
             "error": str(e),
+            "sovereign_quorum": False,
         }
 
 
@@ -293,6 +316,7 @@ async def run_round_table_accountability_probe(
             "status": "FAIL",
             "greeting_latency_ms": 0.0,
             "circuit_latency_ms": 0.0,
+            "sovereign_quorum": False,
             "timestamp": datetime.now().isoformat(),
             "error": "aiohttp not installed in environment",
         }
@@ -332,6 +356,7 @@ async def run_round_table_accountability_probe(
         "foyer_state": greeting.get("foyer_state", "UNKNOWN"),
         "triage_routing": circuit.get("triage_routing", "UNKNOWN"),
         "critic_score": circuit.get("critic_score", 0.0),
+        "sovereign_quorum": circuit.get("sovereign_quorum", False),
         "timestamp": datetime.now().isoformat(),
         "error": error_msg,
     }
@@ -345,7 +370,11 @@ def main():
     logger.info(f"🚀 Running Ground-Truth Round Table Accountability Probe against {foyer_url}...")
     result = asyncio.run(run_round_table_accountability_probe(foyer_url))
     print(json.dumps(result, indent=2))
-    if result["status"] == "FAIL":
+    # [Story 111.20] Exit non-zero on FAIL, DEGRADED, or absent sovereign quorum
+    if (
+        result["status"] in ("FAIL", "DEGRADED")
+        or not result.get("sovereign_quorum", False)
+    ):
         sys.exit(1)
     sys.exit(0)
 
