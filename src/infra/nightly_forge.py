@@ -348,17 +348,13 @@ def quiesce_vllm() -> bool:
         logger.warning(f"[MAINTENANCE] Failed to write lockfile: {e}")
 
     try:
-        # Step 1: Release all resident models from VRAM
-        # Step 2: Signal SLEEP and SHUTDOWN state to the Foyer state machine
+        # [BKM-044 / Story 111.12] API-First Authority: Request Foyer /sleep
+        logger.info(f"[FEAT-213] Requesting Foyer API sleep at {FOYER_URL}/sleep...")
         requests.post(f"{FOYER_URL}/sleep", timeout=10)
-        requests.post(f"{FOYER_URL}/shutdown", timeout=10)
-        requests.post(
-            f"{FOYER_URL}/status_update", json={"state": "SHUTDOWN"}, timeout=10
-        )
     except Exception as e:
         logger.warning(f"[FEAT-213] Could not reach Foyer at {FOYER_URL}: {e}")
 
-    # Step 3: Check VRAM drain. If still allocated after 5s, enforce direct process termination
+    # Step 3: Generic Physical Telemetry Verification (VRAM eviction gate)
     t0 = time.time()
     while time.time() - t0 < 30:
         vram_used = get_vram_usage()
@@ -369,28 +365,28 @@ def quiesce_vllm() -> bool:
             write_step_log("QUIESCE_OK", f"VRAM evicted ({vram_used} MB used)")
             return True
 
-        # If after 5s VRAM is still held, enforce targeted process eviction
-        if time.time() - t0 > 5:
-            logger.info(
-                f"[FEAT-213] VRAM still held ({vram_used} MB). Enforcing targeted vLLM process eviction..."
+        # If after 10s VRAM is still held, delegate to canonical engine controller
+        if time.time() - t0 > 10:
+            logger.warning(
+                f"[FEAT-213] VRAM still held ({vram_used} MB). Invoking canonical engine_ctl.sh stop..."
             )
             try:
-                pid_file = os.path.join(HOMELAB_DIR, "run", "vllm.pid")
-                if os.path.exists(pid_file):
-                    try:
-                        with open(pid_file, "r") as pf:
-                            p_id = int(pf.read().strip())
-                        subprocess.run(["kill", "-9", str(p_id)], check=False)
-                        os.remove(pid_file)
-                    except Exception:
-                        pass
-                subprocess.run(
-                    ["pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"],
-                    check=False,
-                )
-                subprocess.run(["pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
+                engine_script = os.path.join(HOMELAB_DIR, "src", "engine_ctl.sh")
+                if os.path.exists(engine_script):
+                    subprocess.run(["bash", engine_script, "stop"], check=False)
+                else:
+                    # Emergency fallback if engine_ctl.sh missing
+                    pid_file = os.path.join(HOMELAB_DIR, "run", "vllm.pid")
+                    if os.path.exists(pid_file):
+                        try:
+                            with open(pid_file, "r") as pf:
+                                p_id = int(pf.read().strip())
+                            subprocess.run(["kill", "-9", str(p_id)], check=False)
+                            os.remove(pid_file)
+                        except Exception:
+                            pass
             except Exception as pe:
-                logger.warning(f"[FEAT-213] Direct process eviction warning: {pe}")
+                logger.warning(f"[FEAT-213] Canonical stop fallback warning: {pe}")
 
         time.sleep(2)
 
@@ -1001,14 +997,16 @@ def evaluate_nightly_accountability(telemetry_dict: dict, write_to_disk: bool = 
     # Check 3: LoRA Training Pass
     lora_status = telemetry_dict.get("lora_status", "UNKNOWN")
     adapters_trained = telemetry_dict.get("adapters_trained", [])
-    lora_ok = (lora_status == "COMPLETED" or lora_status == "SUCCESS") and len(
-        adapters_trained
-    ) >= thresholds.get("min_lora_adapters_trained_green", 3)
+    is_mothballed = lora_status == "MOTHBALLED" or "MOTHBALLED_SOAK_COOLDOWN" in adapters_trained
+    lora_ok = is_mothballed or (
+        (lora_status == "COMPLETED" or lora_status == "SUCCESS")
+        and len(adapters_trained) >= thresholds.get("min_lora_adapters_trained_green", 3)
+    )
     checks.append(
         {
-            "name": "LoRA Fine-Tuning Multi-Adapter Pass",
+            "name": "LoRA Fine-Tuning Multi-Adapter Pass (or Mothballed Soak)",
             "passed": lora_ok,
-            "detail": f"Status: {lora_status}, Adapters: {len(adapters_trained)}",
+            "detail": f"Status: {lora_status}, Adapters: {len(adapters_trained)}" if not is_mothballed else "MOTHBALLED (30m Quiet Soak Active)",
         }
     )
     if not lora_ok:
@@ -1261,26 +1259,53 @@ def main():
             # WHY: Trains discrete adapters (cli_voice_v1, lab_history_v1, triage_v1, reviewer_v1).
             # Placed FIRST in the maintenance window so it runs on clean VRAM with zero contention.
             try:
-                logger.info(
-                    "[NIGHTLY STEP 3 - LoRA FORGE] Executing Local Unsloth Multi-Adapter LoRA Fine-Tuning Pass..."
-                )
-                training_ok, trained_adapters = run_unsloth_forge()
-                if not training_ok:
-                    logger.warning(
-                        f"[WARNING] [NIGHTLY FORGE] LoRA training incomplete: trained={trained_adapters}. Proceeding to downstream synthesis phases (DECOUPLED)."
-                    )
-                    write_step_log(
-                        "TRAINING_WARNING",
-                        f"LoRA training incomplete: trained={trained_adapters}",
-                        severity="WARNING",
-                    )
-                else:
-                    # Settling Cooldown 2: 30s post-training thermal settling
+                # Check if LoRA training is enabled or mothballed per infrastructure.json
+                lora_enabled = True
+                soak_cooldown_sec = 1800
+                infra_path = os.path.join(HOMELAB_DIR, "config", "infrastructure.json")
+                if os.path.exists(infra_path):
+                    try:
+                        with open(infra_path, "r") as f:
+                            infra_cfg = json.load(f)
+                        forge_cfg = infra_cfg.get("forge", {})
+                        lora_enabled = forge_cfg.get("lora_training_enabled", True)
+                        soak_cooldown_sec = forge_cfg.get("soak_cooldown_seconds", 1800)
+                    except Exception as e:
+                        logger.warning(f"[NIGHTLY STEP 3] Error reading infrastructure.json: {e}")
+
+                if not lora_enabled:
                     logger.info(
-                        "[NIGHTLY COOLDOWN 2] Settling 30s post-training thermal cooldown..."
+                        f"[NIGHTLY STEP 3 - SOAK COOLDOWN] LoRA training mothballed (lora_training_enabled=False). "
+                        f"Executing {soak_cooldown_sec}s ({soak_cooldown_sec/60:.1f}m) quiet settling & thermal soak window..."
                     )
-                    write_step_log("TRAINING_SETTLING", "Sleeping 30s")
-                    time.sleep(30)
+                    write_step_log("SOAK_COOLDOWN_START", f"Sleeping {soak_cooldown_sec}s for quiet settling window")
+                    soak_start = time.time()
+                    while time.time() - soak_start < soak_cooldown_sec:
+                        time.sleep(min(60, soak_cooldown_sec - (time.time() - soak_start)))
+                    write_step_log("SOAK_COOLDOWN_COMPLETE", f"Quiet settling window of {soak_cooldown_sec}s complete")
+                    training_ok = True
+                    trained_adapters = ["MOTHBALLED_SOAK_COOLDOWN"]
+                else:
+                    logger.info(
+                        "[NIGHTLY STEP 3 - LoRA FORGE] Executing Local Unsloth Multi-Adapter LoRA Fine-Tuning Pass..."
+                    )
+                    training_ok, trained_adapters = run_unsloth_forge()
+                    if not training_ok:
+                        logger.warning(
+                            f"[WARNING] [NIGHTLY FORGE] LoRA training incomplete: trained={trained_adapters}. Proceeding to downstream synthesis phases (DECOUPLED)."
+                        )
+                        write_step_log(
+                            "TRAINING_WARNING",
+                            f"LoRA training incomplete: trained={trained_adapters}",
+                            severity="WARNING",
+                        )
+                    else:
+                        # Settling Cooldown 2: 30s post-training thermal settling
+                        logger.info(
+                            "[NIGHTLY COOLDOWN 2] Settling 30s post-training thermal cooldown..."
+                        )
+                        write_step_log("TRAINING_SETTLING", "Sleeping 30s")
+                        time.sleep(30)
             except Exception as te:
                 logger.error(f"[NIGHTLY STEP 3] LoRA training exception: {te}")
                 training_ok = False

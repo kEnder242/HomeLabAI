@@ -112,6 +112,7 @@ def extract_judge_score(event_id: str, max_lookback_s: float = 60.0) -> Tuple[fl
 
     try:
         matched_entries = []
+        stub_records = []
         with open(JUDGE_BACKPRESSURE_PATH, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
@@ -120,12 +121,19 @@ def extract_judge_score(event_id: str, max_lookback_s: float = 60.0) -> Tuple[fl
                 try:
                     entry = json.loads(line)
                     if entry.get("request_id") == event_id:
-                        # Reject stub records
+                        # Detect and track stub records
                         if entry.get("score_source") == "STUB" or entry.get("status") == "STANDBY_STUB":
+                            stub_records.append(entry)
                             continue
                         matched_entries.append(entry)
                 except Exception:
                     continue
+
+        # If sovereign judges failed over to stubs, do not allow Brain's unverified self-assessment to mask it
+        has_sovereign_judge = any("pinky" in e.get("source", "").lower() or "thought" in e.get("source", "").lower() for e in matched_entries)
+        if stub_records and not has_sovereign_judge:
+            stub_reason = stub_records[-1].get("critique") or stub_records[-1].get("status", "STANDBY_STUB")
+            return 0.0, f"[SOVEREIGN_JUDGES_OFFLINE] {stub_reason}"
 
         if not matched_entries:
             return 0.0, f"No genuine online judge record found for event {event_id}"

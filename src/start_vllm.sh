@@ -1,93 +1,33 @@
-#!/bin/bash
-# [BKM-044] Attendant Authority Gate: Direct invocation is strictly forbidden.
-# All engine ignitions must be initiated through the Lab Attendant API.
-if [ -z "$LAB_ATTENDANT_SPAWN" ] && [ "$1" != "--force" ]; then
-    echo "❌ [BKM-044] ERROR: Direct vLLM ignition is forbidden."
-    echo "👉 You MUST transition state via the Lab Attendant: curl -X POST http://127.0.0.1:8765/wake"
-    echo "💡 To override for manual silicon debugging, pass --force."
+#!/usr/bin/env bash
+# ==============================================================================
+# Transparent Backward-Compatibility Shim (start_vllm.sh)
+# Framework Anchor: [LAB-122] Zero-Host Hybrid Inference Standard
+# Sprint Anchor   : SPRINT_PLAN_SPR_111_0 (Story 111.13)
+# Protocols       : BKM-044 (Attendant Authority Gate), BKM-018
+#
+# Delegates canonical lifecycle execution to src/engine_ctl.sh.
+# ==============================================================================
+
+set -eo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE_CTL="$SCRIPT_DIR/engine_ctl.sh"
+
+# [BKM-044] Attendant Authority Gate: Direct invocation is forbidden without authority
+if [[ -z "${LAB_ATTENDANT_SPAWN:-}" ]] && [[ "${1:-}" != "--force" ]]; then
+    echo "❌ [BKM-044] ERROR: Direct engine ignition is forbidden." >&2
+    echo "👉 Transition state via Lab Attendant API: curl -X POST http://127.0.0.1:8765/wake" >&2
+    echo "💡 To override for manual silicon debugging, pass --force." >&2
     exit 1
 fi
 
-# [FEAT-137] vLLM 0.17.0 Infrastructure
-# [FEAT-030] Unity Pattern (Multi-LoRA Shared 3B Base Residency)
-# --- vLLM Sovereign Base Startup ---
-# [Task 17.2] Registry Authority Restored
-MODEL_PATH=${1:-}
-LAB_VENV_PYTHON=${2:-"/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3"}
-
-# Check if MODEL_PATH was passed, otherwise pull from config
-if [ -z "$MODEL_PATH" ]; then
-    MODEL_KEY=$(python3 -c "import json; m = json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json'))['model_manifest']; print(m.get('local-unified-base', m.get('unified-base')))" 2>/dev/null)
-    # If unified-base points to a specific model key, resolve it
-    if [[ "$MODEL_KEY" != /* ]]; then
-        MODEL_PATH=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json'))['model_manifest'].get('$MODEL_KEY', '$MODEL_KEY'))" 2>/dev/null)
-    else
-        MODEL_PATH=$MODEL_KEY
-    fi
-    
-    # Fallback if config parsing fails
-    if [ -z "$MODEL_PATH" ]; then
-        MODEL_PATH="/speedy/models/llama-3.2-3b-instruct-awq"
-    fi
-fi
-
-export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
-export VLLM_USE_FLASHINFER_SAMPLER=0
-
-LORA_BASE="/speedy/models/adapters"
-LORA_MODULES=""
-for adapter in cli_voice_v1 lab_history_v1 triage_v1 reviewer_v1; do
-    if [ -f "$LORA_BASE/$adapter/adapter_config.json" ]; then
-        if [ -z "$LORA_MODULES" ]; then
-            LORA_MODULES="$adapter=$LORA_BASE/$adapter"
-        else
-            LORA_MODULES="$LORA_MODULES $adapter=$LORA_BASE/$adapter"
-        fi
+# Filter out --force from arguments passed to engine_ctl.sh
+ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" != "--force" ]]; then
+        ARGS+=("$arg")
     fi
 done
 
-# [Task 17.2] Architecture Check: Only load Llama LoRAs if using a Llama base
-if [[ ("$MODEL_PATH" == *"Llama"* || "$MODEL_PATH" == *"llama"*) && -n "$LORA_MODULES" ]]; then
-    LORA_ARGS="--enable-lora --max-loras 4 --max-cpu-loras 10 --lora-modules $LORA_MODULES"
-else
-    if [[ "$MODEL_PATH" != *"Llama"* && "$MODEL_PATH" != *"llama"* ]]; then
-        echo "Non-Llama architecture detected. Disabling incompatible Llama LoRA modules."
-    fi
-    LORA_ARGS=""
-fi
-
-# Check unified inference engine mode configuration
-ENGINE_MODE=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json')).get('inference_engine', {}).get('mode', 'speculative'))" 2>/dev/null || echo "vllm")
-
-if [[ "$ENGINE_MODE" == "speculative" || "$ENGINE_MODE" == "single-2080ti" || "$ENGINE_MODE" == "moe-dual" || "$ENGINE_MODE" == "moe-cuda-rpc" ]]; then
-    echo "🚀 [IGNITION] Launching unified inference engine in mode: $ENGINE_MODE"
-    /home/jallred/serve_llm.sh --mode="$ENGINE_MODE" > /home/jallred/Dev_Lab/HomeLabAI/vllm_server.log 2>&1 &
-    PID=$!
-    echo $PID > /home/jallred/Dev_Lab/HomeLabAI/run/vllm.pid
-    exit 0
-fi
-
-CUDA_LIB_PATH="/home/jallred/Dev_Lab/HomeLabAI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib"
-export LD_LIBRARY_PATH="$CUDA_LIB_PATH:$LD_LIBRARY_PATH"
-
-$LAB_VENV_PYTHON -m vllm.entrypoints.openai.api_server \
-    --model "$MODEL_PATH" \
-    --load-format auto \
-    --host 0.0.0.0 \
-    --port 8088 \
-    --served-model-name local-unified-base unified-base \
-    --trust-remote-code \
-    --gpu-memory-utilization 0.55 \
-    --max-model-len 8192 \
-    --enable-chunked-prefill \
-    --max-num-batched-tokens 4096 \
-    --max-num-seqs 16 \
-    --enforce-eager \
-    --attention-backend TRITON_ATTN \
-    --enable-prefix-caching \
-    $LORA_ARGS \
-    $VLLM_EXTRA_ARGS \
-    > /home/jallred/Dev_Lab/HomeLabAI/vllm_server.log 2>&1 &
-
-PID=$!
-echo $PID > /home/jallred/Dev_Lab/HomeLabAI/run/vllm.pid
+echo "🔗 [SHIM] start_vllm.sh delegating to $ENGINE_CTL start ${ARGS[*]:-}"
+exec "$ENGINE_CTL" start "${ARGS[@]:-}"

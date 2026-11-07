@@ -11,6 +11,8 @@
             "split_mode": "layer",
             "tensor_split": "10,12",
             "main_gpu": 0,
+            "load_mode": "auto",
+            "no_host": true,
             "ctx_size": 32768,
             "cache_type_k": "q4_0",
             "cache_type_v": "q4_0",
@@ -171,8 +173,10 @@
         "local-unified-base": "llama-3.2-3b-awq",
         "unified-base": "llama-3.2-3b-awq"
     },
-"forge": {
-  "default_steps": 350,
+    "forge": {
+        "lora_training_enabled": false,
+        "soak_cooldown_seconds": 1800,
+        "default_steps": 350,
         "pacing_delay_sec": 5.0,
         "batch_size": 1,
         "gradient_accumulation_steps": 4,

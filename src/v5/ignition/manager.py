@@ -152,43 +152,43 @@ class IgnitionManager:
                 pass
 
     def _kill_stale_vllm(self):
-        """Kill stale vLLM processes and clean up PID file."""
-        # Read PID from vllm.pid
-        pid_file = os.path.join(LAB_DIR, "run/vllm.pid")
-        if os.path.exists(pid_file):
+        """[Story 111.11] Symmetrically stop inference engine and RPC servers via engine_ctl.sh."""
+        engine_script = os.path.join(LAB_DIR, "src/engine_ctl.sh")
+        if os.path.exists(engine_script):
             try:
-                with open(pid_file, "r") as f:
-                    pid = int(f.read().strip())
-                # Kill the process with SIGKILL if active
-                if psutil.pid_exists(pid):
-                    subprocess.run(["sudo", "kill", "-9", str(pid)], check=False)
-            except Exception:
-                pass
-        # Execute pkill commands
-        subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
-        subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
-        # Cleanly remove vllm.pid
-        try:
+                subprocess.run(["bash", engine_script, "stop"], cwd=LAB_DIR, check=False)
+            except Exception as e:
+                logging.debug(f"[IGNITION] engine_ctl.sh stop failed in stale cleanup: {e}")
+        else:
+            # Fallback legacy kill if engine_ctl.sh not present
+            pid_file = os.path.join(LAB_DIR, "run/vllm.pid")
             if os.path.exists(pid_file):
-                os.remove(pid_file)
-        except OSError:
-            pass
-        # Verify port 8088 is free (allow time for processes to terminate)
+                try:
+                    with open(pid_file, "r") as f:
+                        pid = int(f.read().strip())
+                    if psutil.pid_exists(pid):
+                        subprocess.run(["sudo", "kill", "-9", str(pid)], check=False)
+                    os.remove(pid_file)
+                except Exception:
+                    pass
+            subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "llama-server"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "ggml-rpc-server"], check=False)
+
+        # Verify port 8088 is free
         import time
-        time.sleep(1)  # Give processes time to terminate
+        time.sleep(1)
         try:
             import urllib.request
             import urllib.error
             req = urllib.request.Request("http://localhost:8088/v1/models", method="HEAD")
             with urllib.request.urlopen(req, timeout=2) as resp:
-                # Port is still in use - log but don't fail the method
                 logging.debug(f"[IGNITION] Port 8088 may still be in use after kill (status {resp.status})")
         except (urllib.error.URLError, ConnectionRefusedError, TimeoutError):
-            # Port is free (good)
             logging.debug("[IGNITION] Port 8088 verified free after kill")
         except Exception as e:
-            # Other error - log but continue
-            logging.debug(f"[IGNITION] Port check error after kill (continuing): {e}")
+            logging.debug(f"[IGNITION] Port check error after kill: {e}")
 
 
     async def start_lab(self, reason="INTENT"):
@@ -311,16 +311,17 @@ class IgnitionManager:
         asyncio.create_task(_bg_prime_kender())
 
         try:
-            # Physical hardware ignition
-            vllm_script = os.path.join(LAB_DIR, "src/start_vllm.sh")
+            # Physical hardware ignition via canonical engine_ctl.sh
+            engine_script = os.path.join(LAB_DIR, "src/engine_ctl.sh")
+            if not os.path.exists(engine_script):
+                engine_script = os.path.join(LAB_DIR, "src/start_vllm.sh")
             env = os.environ.copy()
             env["LAB_ATTENDANT_SPAWN"] = "1"
             logging.info(
-                f"[IGNITION] Spawning vLLM engine via {vllm_script} (Attendant Authorized)..."
+                f"[IGNITION] Spawning inference engine via {engine_script} (Attendant Authorized)..."
             )
 
-            # We run it detached so it survives the manager script block
-            subprocess.Popen(["bash", vllm_script], cwd=LAB_DIR, env=env)
+            subprocess.Popen(["bash", engine_script, "start"], cwd=LAB_DIR, env=env)
 
             # Poll for API readiness and perform cognitive vocality check
             api_ready = False
@@ -515,30 +516,39 @@ class IgnitionManager:
         except Exception as e:
             logging.debug(f"[IGNITION] Resident shutdown error: {e}")
 
-        # 2. Targeted Kill of vLLM (Read PID file)
-        try:
-            pid_file = os.path.join(LAB_DIR, "run/vllm.pid")
-            if os.path.exists(pid_file):
-                with open(pid_file, "r") as f:
-                    pid = int(f.read().strip())
-                logging.info(f"[IGNITION] Sending SIGKILL to vLLM PID: {pid}")
-                subprocess.run(["sudo", "kill", "-9", str(pid)], check=False)
-                os.remove(pid_file)
-        except Exception as e:
-            logging.debug(f"[IGNITION] PID-based kill failed: {e}")
+        # 2. Symmetrical teardown of engine & RPC via engine_ctl.sh
+        engine_script = os.path.join(LAB_DIR, "src/engine_ctl.sh")
+        if os.path.exists(engine_script):
+            try:
+                logging.info(f"[IGNITION] Symmetrically stopping engine via {engine_script}...")
+                subprocess.run(["bash", engine_script, "stop"], cwd=LAB_DIR, check=False)
+            except Exception as e:
+                logging.warning(f"[IGNITION] engine_ctl.sh stop failed: {e}")
+        else:
+            # Fallback legacy kill if engine_ctl.sh not found
+            try:
+                pid_file = os.path.join(LAB_DIR, "run/vllm.pid")
+                if os.path.exists(pid_file):
+                    with open(pid_file, "r") as f:
+                        pid = int(f.read().strip())
+                    logging.info(f"[IGNITION] Sending SIGKILL to legacy PID: {pid}")
+                    subprocess.run(["sudo", "kill", "-9", str(pid)], check=False)
+                    os.remove(pid_file)
+            except Exception as e:
+                logging.debug(f"[IGNITION] PID-based kill failed: {e}")
+            subprocess.run(["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "llama-server"], check=False)
+            subprocess.run(["sudo", "pkill", "-9", "-f", "ggml-rpc-server"], check=False)
 
-        # 3. Recursive cleanup (EngineCore and rogue vllm)
+        # 3. Generic Physical Telemetry Verification (VRAM < 500 MB)
         try:
-            # [FEAT-036] Release port 8088 and kill survivors
-            # [FIX] Avoid fuser -k as it kills clients holding sockets (e.g. Gemini CLI)
-            # Adhere to 'The Blacklist Law': Only kill what we own.
-            subprocess.run(
-                ["sudo", "pkill", "-9", "-f", "vllm.entrypoints.openai.api_server"],
-                check=False,
+            res = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, check=False
             )
-            subprocess.run(
-                ["sudo", "pkill", "-9", "-f", "VLLM::EngineCore"], check=False
-            )
+            vram_mb = int(res.stdout.strip().split("\n")[0]) if res.stdout.strip() else 0
+            logging.info(f"[IGNITION] Post-hibernation RTX 2080 Ti VRAM: {vram_mb} MiB")
         except Exception:
             pass
 
