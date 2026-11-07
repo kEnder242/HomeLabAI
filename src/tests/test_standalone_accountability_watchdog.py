@@ -12,6 +12,7 @@ from infra.standalone_accountability_watchdog import (
     check_gpu_power_clamp,
     check_nightly_forge_liveness,
     check_stale_locks,
+    check_sanitization_tripwire,
 )
 
 
@@ -68,17 +69,18 @@ def test_audit_and_emit_digest(tmp_path):
          patch("infra.standalone_accountability_watchdog.check_lora_training", return_value={"name": "LoRA", "passed": True, "detail": "OK"}), \
          patch("infra.standalone_accountability_watchdog.check_subconscious_dreaming", return_value={"name": "Dreams", "passed": True, "detail": "OK"}), \
          patch("infra.standalone_accountability_watchdog.check_morning_round_table", return_value={"name": "Probe", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_swap_pressure", return_value={"name": "Swap", "passed": True, "detail": "OK", "swap_utilization_pct": 10.0, "swap_peak_mb": 100.0, "swap_current_mb": 10.0}):
+         patch("infra.standalone_accountability_watchdog.check_swap_pressure", return_value={"name": "Swap", "passed": True, "detail": "OK", "swap_utilization_pct": 10.0, "swap_peak_mb": 100.0, "swap_current_mb": 10.0}), \
+         patch("infra.standalone_accountability_watchdog.check_sanitization_tripwire", return_value={"name": "Sanitization", "passed": True, "detail": "OK"}):
 
         digest = audit_and_emit_digest(run_live_probe=False)
         assert digest["overall_status"] == "PASS"
-        assert digest["passed_checks"] == 8
+        assert digest["passed_checks"] == 9
         # [Story 971] Single canonical home: digest AND ledger live only under field_notes/data
         assert (out_dir / "daily_accountability_digest.json").exists()
         assert (out_dir / "accountability_ledger.jsonl").exists()
         ledger_entry = json.loads((out_dir / "accountability_ledger.jsonl").read_text().strip())
         assert ledger_entry["overall_status"] == "PASS"
-        assert ledger_entry["passed_checks"] == 8 and ledger_entry["total_checks"] == 8
+        assert ledger_entry["passed_checks"] == 9 and ledger_entry["total_checks"] == 9
         assert ledger_entry["discrepancies"] == []
         assert not (tmp_path / "www_deploy").exists()
 
@@ -118,19 +120,19 @@ def test_swap_telemetry(tmp_path):
 
     # Case 3: High swap pressure (>80%) triggers warning in digest
     with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path / "fn_data"), \
-         patch("infra.standalone_accountability_watchdog.check_gpu_power_clamp", return_value={"name": "GPU", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_foyer_and_vram", return_value={"name": "Foyer", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_stale_locks", return_value={"name": "Locks", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_nightly_forge_liveness", return_value={"name": "Forge", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_lora_training", return_value={"name": "LoRA", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_subconscious_dreaming", return_value={"name": "Dreams", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_morning_round_table", return_value={"name": "Probe", "passed": True, "detail": "OK"}), \
-         patch("infra.standalone_accountability_watchdog.check_swap_pressure", return_value={"name": "Swap", "passed": True, "detail": "High swap", "swap_utilization_pct": 85.0, "swap_peak_mb": 900.0, "swap_current_mb": 850.0}), \
-         patch("infra.standalone_accountability_watchdog.logger.warning") as mock_warn:
-
+             patch("infra.standalone_accountability_watchdog.check_gpu_power_clamp", return_value={"name": "GPU", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.check_foyer_and_vram", return_value={"name": "Foyer", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.check_stale_locks", return_value={"name": "Locks", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.check_nightly_forge_liveness", return_value={"name": "Forge", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.check_lora_training", return_value={"name": "LoRA", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.check_subconscious_dreaming", return_value={"name": "Dreams", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.check_morning_round_table", return_value={"name": "Probe", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.check_swap_pressure", return_value={"name": "Swap", "passed": True, "detail": "High swap", "swap_utilization_pct": 85.0, "swap_peak_mb": 900.0, "swap_current_mb": 850.0}), \
+             patch("infra.standalone_accountability_watchdog.check_sanitization_tripwire", return_value={"name": "Sanitization", "passed": True, "detail": "OK"}), \
+             patch("infra.standalone_accountability_watchdog.logger.warning") as mock_warn:
         digest = audit_and_emit_digest(run_live_probe=False)
         assert digest["overall_status"] == "PASS"
-        assert digest["passed_checks"] == 8
+        assert digest["passed_checks"] == 9
         assert mock_warn.called
         assert "Swap utilization at %.1f%%" in mock_warn.call_args[0][0]
         assert mock_warn.call_args[0][1] == 85.0
@@ -163,3 +165,21 @@ def test_subconscious_dreaming_freshness(tmp_path):
         res = check_subconscious_dreaming()
         assert res["passed"] is False
         assert res["count"] == 0
+
+
+def test_sanitization_tripwire(tmp_path):
+    from infra.standalone_accountability_watchdog import check_sanitization_tripwire
+    with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path):
+        res = check_sanitization_tripwire()
+        assert res["passed"] is True
+
+    ledger = tmp_path / "sanitization_escape_ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"timestamp": "2026-11-07T22:00:00+00:00", "loop_id": "LOOP-006", "matched_rules": ["rule_password_prompt"]}) + "\n"
+    )
+    with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path):
+        res = check_sanitization_tripwire()
+        assert res["passed"] is False
+        assert len(res["escaped_entries"]) == 1
+        assert res["escaped_entries"][0]["field"] == "UNKNOWN"
+        assert res["escaped_entries"][0]["matched_rules"] == ["rule_password_prompt"]

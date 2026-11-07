@@ -367,6 +367,67 @@ def check_subconscious_dreaming():
          }
 
 
+def check_sanitization_tripwire():
+    """Check: Sanitization Escape Tripwire — detect credential escapes in last 24h.
+
+    Reads sanitization_escape_ledger.jsonl from DATA_DIR. If any escapes occurred
+    in the last 24h, return passed=False with detail. Otherwise passed=True.
+    """
+    import datetime as _dt
+    ledger_path = OUTPUT_DIR / "sanitization_escape_ledger.jsonl"
+    now = _dt.datetime.now(_dt.timezone.utc)
+    cutoff = now - _dt.timedelta(hours=24)
+    escaped = False
+    entries = []
+    if ledger_path.exists():
+        try:
+            with open(ledger_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        ts_str = entry.get("timestamp", "")
+                        if ts_str:
+                            ts = _dt.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                            if ts.tzinfo is None:
+                                ts = ts.replace(tzinfo=_dt.timezone.utc)
+                            if ts >= cutoff:
+                                escaped = True
+                                entries.append({
+                                    "timestamp": ts_str,
+                                    "field": entry.get("field", "UNKNOWN"),
+                                    "matched_rules": entry.get("matched_rules", []),
+                                })
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+        except Exception as e:
+            logger.warning(f"Failed to read sanitization_escape_ledger: {e}")
+            return {
+                "name": "Sanitization Escape Tripwire",
+                "passed": False,
+                "detail": f"Failed to read ledger: {e}",
+            }
+
+    if escaped:
+        detail = f"Credential escapes detected in last 24h ({len(entries)}): " + "; ".join(
+            f"{e['field']}@{e['timestamp'][:19]}" for e in entries[:5]
+        )
+        return {
+            "name": "Sanitization Escape Tripwire",
+            "passed": False,
+            "detail": detail,
+            "escaped_entries": entries,
+        }
+
+    return {
+        "name": "Sanitization Escape Tripwire",
+        "passed": True,
+        "detail": "No credential escapes in last 24h",
+    }
+
+
 def check_swap_pressure():
     """Check 8: Cgroup Swap Pressure — monitor swap utilization and peak usage.
     
@@ -567,6 +628,11 @@ def audit_and_emit_digest(run_live_probe: bool = True):
     checks.append(c_dream)
     if not c_dream["passed"]:
         discrepancies.append(c_dream["detail"])
+
+    c_sanitization = check_sanitization_tripwire()
+    checks.append(c_sanitization)
+    if not c_sanitization["passed"]:
+        discrepancies.append(c_sanitization["detail"])
 
     c_probe = check_morning_round_table(run_live=run_live_probe)
     checks.append(c_probe)
