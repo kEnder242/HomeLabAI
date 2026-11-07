@@ -521,6 +521,57 @@ def compact_foyer_queue(max_age_sec: float = 7200.0) -> dict:
         return {"error": str(e)}
 
 
+def flush_swap_residency() -> bool:
+    """[FEAT-665 / Story 111.21] Restart headroom-proxy.service to flush swap residency and re-validate foyer health.
+
+    Restarts ``headroom-proxy.service`` via ``systemctl --user`` to terminate its
+    resident swap allocation (~700MB NVSHMEM), then polls
+    http://127.0.0.1:8787/health for up to 25s until HTTP 200 confirms the foyer
+    daemon is healthy again. All exceptions are swallowed so a swap/health hiccup
+    can never abort the nightly forge flow.
+    """
+    # 1. Restart headroom-proxy.service to flush its swap allocation
+    try:
+        subprocess.run(
+            ["systemctl", "--user", "restart", "headroom-proxy.service"],
+            check=False,
+            timeout=30,
+        )
+        logger.info(
+            "[FEAT-665] systemctl --user restart headroom-proxy.service executed to flush headroom swap."
+        )
+    except Exception as e:
+        logger.warning(f"[FEAT-665] headroom-proxy restart warning: {e}")
+
+    # 2. Record the headroom swap flush step
+    write_step_log(
+        "HEADROOM_SWAP_FLUSH",
+        "Flushed headroom swap via systemctl --user restart headroom-proxy.service",
+    )
+
+    # 3. Poll foyer health endpoint for up to 25s
+    health_url = "http://127.0.0.1:8787/health"
+    deadline = time.monotonic() + 25
+    healthy = False
+    while time.monotonic() < deadline:
+        try:
+            resp = requests.get(health_url, timeout=2)
+            if resp.status_code == 200:
+                logger.info(f"[FEAT-665] Foyer health probe OK: HTTP 200 at {health_url}")
+                healthy = True
+                break
+        except Exception:
+            # Continuous errors do not short-circuit; keep polling until deadline
+            pass
+        time.sleep(0.5)
+
+    if not healthy:
+        logger.warning(
+            f"[FEAT-665] Foyer health probe at {health_url} did not return HTTP 200 within 25s."
+        )
+    return healthy
+
+
 def run_mass_scan():
     """[FEAT-416 / SPR-52.0] Run note ingestion loop with strict 05:00 AM cutoff & 3.5-hour max budget.
 
@@ -1251,6 +1302,14 @@ def main():
                 logger.info(f"[NIGHTLY STEP 2] Queue compaction stats: {compaction_stats}")
             except Exception as e:
                 logger.warning(f"[NIGHTLY STEP 2] Queue compaction error: {e}")
+            # [Story 111.21 / FEAT-665] Purge accumulated swap residency and re-validate foyer health
+            try:
+                swap_flushed = flush_swap_residency()
+                logger.info(
+                    f"[NIGHTLY STEP 2] Swap residency flush complete (healthy={swap_flushed})"
+                )
+            except Exception as e:
+                logger.warning(f"[NIGHTLY STEP 2] Swap residency flush error: {e}")
             time.sleep(15)
 
             # =========================================================================
