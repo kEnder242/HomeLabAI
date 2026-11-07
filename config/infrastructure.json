@@ -2,8 +2,21 @@
     "_doc": "HomeLabAI/docs/LAB_INFRASTRUCTURE.md",
     "_comment": "AGENT NOTE: Physical silicon laws, hardware specs, mount points, and multi-engine topology are documented in HomeLabAI/docs/LAB_INFRASTRUCTURE.md. Always read this doc before inferring hardware boundaries or engine capabilities.",
     "inference_engine": {
-        "mode": "moe-dual",
-        "supported_modes": ["moe-dual", "speculative", "single-2080ti", "vllm"],
+        "mode": "moe-cuda-rpc",
+        "supported_modes": ["moe-cuda-rpc", "moe-dual", "speculative", "single-2080ti", "vllm"],
+        "moe_cuda_rpc": {
+            "model": "/speedy/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "rpc_server": "127.0.0.1:50052",
+            "devices": "CUDA0,RPC0",
+            "split_mode": "layer",
+            "tensor_split": "10,12",
+            "main_gpu": 0,
+            "ctx_size": 32768,
+            "cache_type_k": "q4_0",
+            "cache_type_v": "q4_0",
+            "reasoning": "off",
+            "reasoning_budget": 0
+        },
         "moe_dual": {
             "model": "/speedy/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
             "devices": "Vulkan0,Vulkan1",

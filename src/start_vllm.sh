@@ -59,7 +59,7 @@ fi
 # Check unified inference engine mode configuration
 ENGINE_MODE=$(python3 -c "import json; print(json.load(open('/home/jallred/Dev_Lab/HomeLabAI/config/infrastructure.json')).get('inference_engine', {}).get('mode', 'speculative'))" 2>/dev/null || echo "vllm")
 
-if [[ "$ENGINE_MODE" == "speculative" || "$ENGINE_MODE" == "single-2080ti" || "$ENGINE_MODE" == "moe-dual" ]]; then
+if [[ "$ENGINE_MODE" == "speculative" || "$ENGINE_MODE" == "single-2080ti" || "$ENGINE_MODE" == "moe-dual" || "$ENGINE_MODE" == "moe-cuda-rpc" ]]; then
     echo "🚀 [IGNITION] Launching unified inference engine in mode: $ENGINE_MODE"
     /home/jallred/serve_llm.sh --mode="$ENGINE_MODE" > /home/jallred/Dev_Lab/HomeLabAI/vllm_server.log 2>&1 &
     PID=$!
