@@ -1521,8 +1521,9 @@ Under `BKM-020` (§3) and `BKM-023`, agents must **never** summarize, overwrite,
 > - [ ] **1. 5-Sprint Lookback**: Reviewed last 5 sprints for traps, anti-patterns, and sentinels (`BKM-082 §2.1`).
 > - [ ] **2. Mistakes-Avoided Ledger**: Enumerate $\ge$ 3 concrete historical mistakes avoided (`BKM-082 §2.4`).
 > - [ ] **3. Oracle Review**: Adversarial audit completed and appended via Cloud Synthesizer (`BKM-007` / `BKM-061` / `delegate.py --mode oracle`).
-> - [ ] **4. Delegation Justification**: Evaluated `LOCAL`/`CLOUD` first; documented rationale for any story assigned to `AGY:PRIMARY` (`Invariant 7` / `BKM-049`).
-> - [ ] **5. Risk Assessment**: Evaluated `LOCAL` tasks for promotion to `CLOUD` based on blast radius, file scale, or refactoring complexity.
+> - [ ] **4. Delegation Gate (`BKM-049` / `BKM-086 §Pillar 3`)**: Dispatched to `[SWARM:LOCAL]` or `[SWARM:CLOUD]` via `delegate.py`. Direct `[AGY:PRIMARY]` authoring is strictly forbidden unless (A) explicitly commanded by the operator in the current prompt, or (B) 3 local and 1 cloud diagnostic rounds have failed in `delegation_ledger.jsonl`. Prose rationales cannot self-grant authority.
+> - [ ] **5. Risk Assessment**: Evaluated tasks for promotion to `CLOUD` based on blast radius, file scale, or refactoring complexity.
+> - [ ] **6. BKM Invariant & Anti-Bypass Audit**: Explicitly verified plan against core BKMs (`BKM-049` Anti-Bypass, `BKM-048` Harness Halt, `BKM-044` Attendant Authority, `BKM-018` Orchestrator Gate). Confirmed zero un-waived protocol violations. All operator waivers are strictly phase-scoped per the **Waiver Scope Law (`BKM-086 §1.2`)**; historical waivers from prior sprints or phases are completely void.
 > *An agent MUST NOT mark these `[x]` without citing the corresponding section in the plan. Any unchecked box halts execution.*
 
 ### 1. The Core Law: Grounding Before Action
@@ -1709,6 +1710,12 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
 - **Digital Checkbox Paper Trail**: The AFK checklist lives directly inside the active sprint plan (`SPRINT_PLAN_*.md`) as an interactive markdown checklist (`- [ ] / - [x]`). Avoid standalone scratch files; digitally checking each box forces deliberate verification and creates a durable paper trail that prevents glossing over pre-flight gates.
 - **Idempotent Execution**: Paved paths do not need to be followed twice **ONLY WHEN** the BKM flow has **ALREADY** been followed and the corresponding artifacts (grounding, 4-anchor plans, delegation targets, and test harnesses) are **CURRENT**.
 - **Level-of-Entry Flow-Down**: Any additions, scope changes, or newly introduced stories **MUST** trigger a new path flow at the exact level they were added (e.g., introducing a new story mandates Grounding $\to$ 4-Anchor Specification $\to$ Delegation/Verification, rather than jumping directly to execution or skipping preceding BKM gates).
+
+### 1.2 The Waiver Scope Law (Anti-Waiver Bleed Invariant)
+Operator waivers (e.g., *"don't use local delegation for this phase"*, *"skip oracle audit"*, *"assign AGY primary"*) are strictly **ephemeral, non-transferable, and temporally bounded**:
+1. **Single-Phase Expiration**: An operator waiver expires automatically upon completion of the specific phase or sprint in which it was granted.
+2. **Strict Anti-Bleed Invariant**: An agent is strictly forbidden from carrying a historical waiver forward across sprint or phase boundaries. Treating a past tactical allowance as permanent architectural permission ("Waiver Bleed") is a severe protocol failure.
+3. **Explicit Renewal Mandate**: If an agent believes driver, systemd, or hardware risks still justify bypassing local delegation in a new sprint or phase, it MUST explicitly request a fresh waiver from the operator in chat text before authoring the plan. Self-granting a waiver based on prior conversations is null and void.
 
 ### 2. Operational Trigger & Protocol Loop
 When commanded to run an **AFK Sprint** or **Paved Sprint**:
