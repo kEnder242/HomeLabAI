@@ -616,6 +616,31 @@
   * Turing CUDA Prefill: **96.4 tok/s**.
   * Autoregressive Generation: **32.5 tok/s**.
 
+---
+
+## LAB-123: Heterogeneous Silicon Media Isolation & Dynamic DRM Alignment Standard
+
+* **Objective**: Isolate media server hardware acceleration (Jellyfin QSV) to the Intel Arc B580 with 0 MB NVIDIA VRAM allocation, and eliminate silent subtitle transcode failures caused by kernel DRM render-node enumeration swaps.
+* **Date**: November 8, 2026.
+* **Architectural Boundaries**:
+  * **NVIDIA RTX 2080 Ti (11GB)**: 100% reserved for LLM inference (vLLM / llama.cpp / Foyer on port 8088/8765). Media servers are forbidden from touching CUDA or NVENC.
+  * **Intel Arc B580 (16GB)**: Primary display server, Steam Remote Play adapter, and dedicated QuickSync (`qsv`) transcode engine for Jellyfin. Also serves Vulkan layer offload via loopback RPC port 50052 for heterogeneous LLM inference.
+* **The Root Cause (The DRM Node Swapping Trap)**:
+  * Render node numbers (`/dev/dri/renderD*`) are not fixed; the Linux kernel assigns them according to driver initialization completion order during boot.
+  * Historically: Haswell iGPU = `renderD128`, Arc B580 = `renderD129`, NVIDIA 2080 Ti = `renderD130`.
+  * After driver reload / reboot: Haswell iGPU = `renderD128`, NVIDIA 2080 Ti = `renderD129`, Arc B580 = `renderD130`.
+  * Jellyfin's `/var/lib/jellyfin-data/config/config/encoding.xml` was statically pinned to `/dev/dri/renderD129`. When subtitle burning forced video transcoding, Jellyfin passed the NVIDIA GPU to Intel's `iHD` QuickSync driver, causing an immediate FFmpeg I/O crash.
+* **Current State**:
+  * `encoding.xml` configured for Intel QuickSync (`qsv`) on live Arc B580 node (`/dev/dri/renderD130`).
+  * Subtitle burning transcode benchmarked at **16.1x speed** (`av1_qsv`) with 0 MB NVIDIA VRAM impact.
+  * Modernized `Portfolio_Dev/field_notes/jellyfin_autotune.py` to resolve `/dev/dri/by-path/pci-0000:03:00.0-render` via `os.path.realpath()`, idempotently updating `encoding.xml`.
+  * Mode-aware ignition audit implemented in `manager.py` to suppress false-alarm `[VLLM_LORA_DEGRADED]` alerts during MoE boot.
+* **Next Actions / Planned Execution**:
+  1. **Boot Automation**: Register `jellyfin_autotune.py` in systemd (`jellyfin-drm-sync.service` or `lab-boot-sentinel.service`) to auto-sync `encoding.xml` before Jellyfin accepts playback sessions.
+  2. **Udev Rule Modernization**: Install `/etc/udev/rules.d/92-jellyfin-arc.rules` mapping PCI `0000:03:00.0` to a persistent symlink (`/dev/dri/arc_render`).
+  3. **Multi-Tenancy Validation**: Verify simultaneous 4K AV1 subtitle burning while port 8088 serves high-throughput MoE speculative decoding.
+
+
 
 
 
