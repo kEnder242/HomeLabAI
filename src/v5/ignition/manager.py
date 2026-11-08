@@ -400,30 +400,56 @@ class IgnitionManager:
             self.recovery_in_progress = False
             logging.info("[IGNITION] Physical silicon is READY.")
 
-            # [FEAT-629 / BKM-066] Verify active LoRA adapters on port 8088 and report status to Pager
+            # [FEAT-629 / BKM-066] Verify active inference engine on port 8088 and report status to Pager
             try:
                 import urllib.request
                 import json
+
+                engine_mode = "vllm"
+                if os.path.exists(INFRA_CONFIG):
+                    try:
+                        with open(INFRA_CONFIG, "r") as f:
+                            engine_mode = json.load(f).get("inference_engine", {}).get("mode", "vllm")
+                    except Exception:
+                        pass
+
                 req = urllib.request.Request("http://localhost:8088/v1/models")
                 with urllib.request.urlopen(req, timeout=2) as r:
                     if r.status == 200:
                         m_data = json.loads(r.read().decode("utf-8"))
                         loaded_ids = [m.get("id") for m in m_data.get("data", [])]
-                        expected_adapters = ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"]
-                        missing_adapters = [a for a in expected_adapters if a not in loaded_ids]
-                        if missing_adapters:
-                            loaded_str = ", ".join([a for a in loaded_ids if a in expected_adapters]) or "none"
-                            self.record_pager(
-                                f"[VLLM_LORA_DEGRADED] Missing or failed LoRA adapters on ignition: {', '.join(missing_adapters)} (Loaded: {loaded_str})",
-                                severity="WARNING",
-                                source="vLLM",
-                            )
+                        if engine_mode == "vllm":
+                            expected_adapters = ["cli_voice_v1", "lab_history_v1", "triage_v1", "reviewer_v1"]
+                            missing_adapters = [a for a in expected_adapters if a not in loaded_ids]
+                            if missing_adapters:
+                                loaded_str = ", ".join([a for a in loaded_ids if a in expected_adapters]) or "none"
+                                self.record_pager(
+                                    f"[VLLM_LORA_DEGRADED] Missing or failed LoRA adapters on ignition: {', '.join(missing_adapters)} (Loaded: {loaded_str})",
+                                    severity="WARNING",
+                                    source="vLLM",
+                                )
+                            else:
+                                self.record_pager(
+                                    f"[VLLM_LORA_READY] All {len(expected_adapters)} canonical LoRA adapters loaded successfully.",
+                                    severity="INFO",
+                                    source="vLLM",
+                                )
                         else:
-                            self.record_pager(
-                                f"[VLLM_LORA_READY] All {len(expected_adapters)} canonical LoRA adapters loaded successfully.",
-                                severity="INFO",
-                                source="vLLM",
-                            )
+                            # [LAB-122] Heterogeneous MoE / Native Engine check
+                            unified_model = get_unified_base_model()
+                            has_base = any(m in loaded_ids for m in ["Qwen3.6-35B-A3B", "unified-base", "local", unified_model])
+                            if has_base:
+                                self.record_pager(
+                                    f"[ENGINE_READY] Unified inference engine active on port 8088 (mode: {engine_mode}, model: {loaded_ids[0] if loaded_ids else 'unified-base'}).",
+                                    severity="INFO",
+                                    source="IgnitionManager",
+                                )
+                            else:
+                                self.record_pager(
+                                    f"[ENGINE_DEGRADED] Engine active on port 8088 but base model not found (Loaded: {', '.join(loaded_ids) or 'none'})",
+                                    severity="WARNING",
+                                    source="IgnitionManager",
+                                )
             except Exception as le:
                 logging.debug(f"[IGNITION] Adapter audit probe note: {le}")
 
