@@ -168,14 +168,16 @@ def test_subconscious_dreaming_freshness(tmp_path):
 
 
 def test_sanitization_tripwire(tmp_path):
+    import datetime
     from infra.standalone_accountability_watchdog import check_sanitization_tripwire
     with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path):
         res = check_sanitization_tripwire()
         assert res["passed"] is True
 
     ledger = tmp_path / "sanitization_escape_ledger.jsonl"
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     ledger.write_text(
-        json.dumps({"timestamp": "2026-11-07T22:00:00+00:00", "loop_id": "LOOP-006", "matched_rules": ["rule_password_prompt"]}) + "\n"
+        json.dumps({"timestamp": now_iso, "loop_id": "LOOP-006", "matched_rules": ["rule_password_prompt"]}) + "\n"
     )
     with patch("infra.standalone_accountability_watchdog.OUTPUT_DIR", tmp_path):
         res = check_sanitization_tripwire()

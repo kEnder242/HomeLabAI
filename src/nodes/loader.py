@@ -181,6 +181,7 @@ class BicameralNode:
         ]
         self.active_host = self.primary_host
         self.lora_name = node_cfg.get("lora_name")
+        self.use_lora = node_cfg.get("use_lora", True)
 
         # [Task 6.1] Physics: Single Telemetry Relay Thread
         self.telemetry_queue = queue.Queue()
@@ -568,13 +569,8 @@ class BicameralNode:
 
     async def ping_engine(self, force=False):
         """[FEAT-192 / FEAT-582] Checks if backend engines are responsive with tiered candidate fallback."""
-        if not force and self._engine_cache:
-            ttl = (
-                self._probe_ttl_failure
-                if self._engine_cache.get("type") == "NONE"
-                else self._probe_ttl_success
-            )
-            if time.time() - self._last_probe < ttl:
+        if not force and self._engine_cache and self._engine_cache.get("type") != "NONE":
+            if time.time() - self._last_probe < self._probe_ttl_success:
                 return True, "Cached"
 
         last_error = "No candidates configured"
@@ -646,10 +642,12 @@ class BicameralNode:
     ):
         """Standard interface for LLM calls across the bicameral mind (Async Generator)."""
         # [FEAT-462] Warming Anchor Hold-The-Line Loop
-        if not self._engine_cache or (
-            time.time() - self._last_probe > self._probe_ttl_success
+        if (
+            not self._engine_cache
+            or self._engine_cache.get("type") == "NONE"
+            or (time.time() - self._last_probe > self._probe_ttl_success)
         ):
-            ok, msg = await self.ping_engine()
+            ok, msg = await self.ping_engine(force=True)
             if not ok:
                 if (
                     msg == "WARMING"
@@ -803,12 +801,15 @@ class BicameralNode:
             active_lora = self.lora_name
             if role_lora_override is not None:
                 active_lora = role_lora_override if role_lora_override else None
-            if active_lora and use_lora:
+            # [Story 111.23] Configurable use_lora flag: role override takes precedence over static node config
+            use_lora_effective = getattr(self, "use_lora", True) if role_lora_override is None else bool(role_lora_override)
+            if active_lora and use_lora and use_lora_effective:
                 if active_lora in engine.get("available", []):
                     payload["model"] = active_lora
                 else:
+                    engine_name = engine.get("type", "engine")
                     logging.warning(
-                        f"[{self.name}] LoRA '{active_lora}' not active on vLLM. Falling back to base: {engine['model']}"
+                        f"[{self.name}] LoRA '{active_lora}' not active on {engine_name}. Using base: {engine['model']}"
                     )
 
             # [Task 9.2] Enforce explicit JSON schema if provided

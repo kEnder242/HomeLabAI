@@ -85,7 +85,8 @@
             "primary": "M5_AIR",
             "fallback": "KENDER",
             "local_fallback": "localhost",
-            "lora_name": "lab_history_v1"
+            "lora_name": "lab_history_v1",
+            "use_lora": false
         },
         "brain": {
             "primary": "localhost",
@@ -93,7 +94,8 @@
         },
         "pinky": {
             "primary": "localhost",
-            "lora_name": "cli_voice_v1"
+            "lora_name": "cli_voice_v1",
+            "use_lora": false
         },
         "lab": {
             "primary": "localhost",
