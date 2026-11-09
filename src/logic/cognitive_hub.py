@@ -251,7 +251,7 @@ _HYDE_SYNTHESIS_PROMPT_DEFAULT = (
 _HYDE_OVERHEARING_PROMPT = (
     "You are Pinky, the intuitive and lively lab mouse. Jason just asked The Brain a question.\n"
     "Respond with a structured JSON object containing:\n"
-    "1. 'spoken_take': 1 lively sentence in character alerting Brain that Jason is asking for him (e.g. 'Narf! Brain, Jason is asking for you!').\n"
+    "1. 'spoken_take': 1 lively sentence alerting Brain that Jason is asking for him (e.g. 'Brain, Jason is asking for you!').\n"
     "2. 'search_terms': 3 to 6 concise technical keywords and era anchors to retrieve relevant historical records or telemetry for Brain.\n"
     "3. 'upvote': boolean (true if Jason's inquiry is intriguing, high-value, or warrants deeper lab exploration).\n"
 )
@@ -724,6 +724,7 @@ def build_two_mice_stage_prompt(
     topic_directive: str = "",
     career_bedrock: str = "",
     context_intent: str = "",
+    domain: str = "",
 ) -> str:
     """[FEAT-489 / FEAT-635] Build the system-role prompt for one stage of the Two-Mice funnel.
 
@@ -768,6 +769,19 @@ def build_two_mice_stage_prompt(
     node_key = "brain" if stage == 1 else "pinky"
     pacing_line = format_pacing_line(node_key, interest)
     bedrock_block = f"{career_bedrock}\n\n" if career_bedrock and career_bedrock.strip() else ""
+
+    effective_domain = domain.lower() if domain else ""
+    is_telemetry_query = (
+        effective_domain in ("exp_tlm", "infra", "telemetry")
+        or any(k in effective_query.lower() for k in ("telemetry", "vram", "temperature", "power cap", "thermals", "silicon residency"))
+    )
+    telemetry_guardrail = (
+        "\n[PHYSICAL_REALITY_GUARDRAIL]: Never invent, alter, or flatter hardware telemetry. "
+        "If live thermals, voltages, or power metrics are absent from the evidence, state that telemetry is unrecorded. "
+        "Never cite ambient temperatures (<= 30°C) for active GPUs under VRAM load, and never conflate memory architectures (GDDR vs HBM).\n"
+        if is_telemetry_query else ""
+    )
+
     section = (
         "[PILLAR_1_RECORD]: SHARED BEDROCK LAB FOUNDATION\n"
         f"{TWO_MICE_BEDROCK_FOUNDATION}\n\n"
@@ -794,13 +808,14 @@ def build_two_mice_stage_prompt(
             "Modulate council interest: emit <boost_interest> when discovery is high, or <damp_interest> when routine.\n\n"
             "Emit EXACTLY this structure:\n"
             "[ANALYSIS]\n"
-            "- CHUNK-1: <rich engineering justification and anchor citations> => KEEP/DROP\n"
-            "- CHUNK-2: <rich engineering justification and anchor citations> => KEEP/DROP\n"
+            "- CHUNK-1: [Evidence quotes and specific justification] => KEEP\n"
+            "- CHUNK-2: [Evidence quotes and specific justification] => DROP\n"
             "[BEDROCK SELECTION]\n"
             "- CHUNK-1: KEEP\n"
             "Rules: In [ANALYSIS], evaluate every [CHUNK-N] with thorough evidentiary reasoning and quotes before verdict. "
             "In [BEDROCK SELECTION], list ONLY the chunks you KEEP. "
             "Your selection is parsed mechanically; do not add prose outside these two blocks.\n\n"
+            f"{telemetry_guardrail}"
             f"[USER_QUERY]: {effective_query.strip()}\n"
             f"<historical_record>\n{historical}\n</historical_record>"
         )
@@ -826,7 +841,8 @@ def build_two_mice_stage_prompt(
     return (
         section
         + "[STAGE_2_INSTRUCTIONS]: You are Pinky. Jason asked a question and Brain reviewed the lab evidence. "
-        "Acknowledge Brain in character (e.g. 'Narf! Brain dug up the firmware logs...') and deliver a 1 to 2-sentence conversational TL;DR directly to Jason. "
+        "Acknowledge Brain's analysis naturally according to the context and deliver a 1 to 2-sentence conversational TL;DR directly to Jason. "
+        "Cite the facts accurately without inventing numbers or ungrounded claims. "
         "Keep it warm, concise, and human — do not recite raw RAG passages or technical serial numbers. "
         "STRICT FORMATTING: Plain conversational speech only. Output NO markdown headers, NO bold section tags, and NO bullet points. Exactly 1 to 2 spoken sentences directly to Jason, then stop.\n"
         "Single-Turn Boundary: Speak strictly for your own active turn. Deliver your 1-2 sentence conversational "
@@ -836,6 +852,7 @@ def build_two_mice_stage_prompt(
         f"[BRAIN_NOTES]: {extracted_evidence.strip()}"
         f"{pinky_turn_history}"
         f"{vibe_block}"
+        f"{telemetry_guardrail}"
     )
 
 
@@ -2111,7 +2128,11 @@ class CognitiveHub:
         self.current_target_domains = target_domains
 
         if self.set_active_domain:
-            self.set_active_domain(t_parsed.get("domain", "standard"))
+            inferred = t_parsed.get("inferred_intent") or f"{t_parsed.get('domain', 'standard')}:{t_parsed.get('vibe', 'TECHNICAL')}"
+            try:
+                self.set_active_domain(t_parsed.get("domain", "standard"), request_id=request_id, intent=inferred)
+            except TypeError:
+                self.set_active_domain(t_parsed.get("domain", "standard"))
 
         # [Stage 2 / FEAT-437 / FEAT-657] Zero-Bifurcation: Pinky Stage 2 Opening Take
         # Generates initial spoken take and extracts HyDE search terms before situational branching
@@ -2870,7 +2891,7 @@ class CognitiveHub:
                     pinky_guidance = (
                         f"{pinky_pacing}\n"
                         "[OVERHEARING]: Jason's question is addressed directly to Brain, not you. You overheard it! "
-                        "React in character as Pinky by alerting Brain or poking him that Jason is speaking to him (e.g., 'Narf! Brain, Jason is asking for you!'). Do not answer the question on Brain's behalf."
+                        "Alert Brain or poke him that Jason is speaking to him (e.g., 'Brain, Jason is asking for you!'). Do not answer the question on Brain's behalf."
                     )
                     triage_context = (
                         f"[OVERHEARING_ALERT]: Jason is addressing The Brain directly.\n"
@@ -2889,7 +2910,7 @@ class CognitiveHub:
                 if target == "BRAIN":
                     active_hyde_prompt += (
                         "\n[OVERHEARING_DIRECTIVE]: Jason addressed The Brain directly. In 'spoken_take', "
-                        "alert Brain in character rather than answering on his behalf (e.g. 'Narf! Brain, Jason is asking for you!')."
+                        "alert Brain rather than answering on his behalf (e.g. 'Brain, Jason is asking for you!')."
                     )
 
                 # Additive Layer 2: Domain/Era Guidance & JITC Bedrock (Consuming triage directly as a data type)
@@ -3493,7 +3514,7 @@ class CognitiveHub:
         context_intent = format_context_intent(vibe_val, domain_val)
 
         stage1_prompt = build_two_mice_stage_prompt(
-            1, user_query=query, context=rag_context, interest=interest, pinky_take=pinky_take, career_bedrock=career_bedrock, context_intent=context_intent
+            1, user_query=query, context=rag_context, interest=interest, pinky_take=pinky_take, career_bedrock=career_bedrock, context_intent=context_intent, domain=domain_val
         )
         brain_tools = await self._get_node_tools("brain")
         brain_grounding = ""
@@ -3647,6 +3668,7 @@ class CognitiveHub:
             pinky_take=effective_pinky_take,
             topic_directive=topic_directive,
             career_bedrock=career_bedrock,
+            domain=t_data.get("domain", ""),
         )
         pinky_budget = calculate_pacing_ceiling("pinky", interest)
         pinky_stream_count = 0

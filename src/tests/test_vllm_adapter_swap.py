@@ -165,3 +165,67 @@ async def test_role_token_dynamic_swap(monkeypatch):
     assert captured_payload["model"] == "default_lora"
     user_msg = captured_payload["messages"][1]["content"]
     assert user_msg.strip() == "plain query"
+
+
+@pytest.mark.asyncio
+async def test_use_lora_flag_disables_adapter_lookup(monkeypatch, caplog):
+    """[Story 111.23] When use_lora is false, do not attempt adapter binding or log fallback warnings."""
+    node = BicameralNode("pinky", "test prompt")
+    assert node.use_lora is False
+    assert node.lora_name == "cli_voice_v1"
+
+    node._engine_cache = {
+        "url": "http://localhost:8088/v1/chat/completions",
+        "model": "base-model",
+        "type": "VLLM",
+        "available": ["base-model"],
+    }
+    node._last_probe = time.time()
+
+    captured_payload = None
+
+    class MockResponse:
+        def __init__(self, data):
+            self._data = data
+            self.status = 200
+            self._content = _MockContent()
+
+        async def json(self):
+            return self._data
+
+        async def text(self):
+            return str(self._data)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        @property
+        def content(self):
+            return self._content
+
+    class MockSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def post(self, url, json, timeout):
+            nonlocal captured_payload
+            captured_payload = json
+            return MockResponse({"choices": [{"message": {"content": "mocked"}}]})
+
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: MockSession())
+
+    import logging
+    with caplog.at_level(logging.WARNING):
+        async for token in node.generate_response("query with use_lora false"):
+            pass
+
+    assert captured_payload["model"] == "base-model"
+    assert "not active on" not in caplog.text
+    assert "Falling back" not in caplog.text
+

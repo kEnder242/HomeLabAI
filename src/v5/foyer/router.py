@@ -405,6 +405,7 @@ class FoyerRouter:
         # [SPR-52.0 / Task 52.3] Stage-hook registry for the 5-Stage Division of Labor
         self.stage_hooks = {sid: [] for sid, _, _ in DIVISION_OF_LABOR_STAGES}
         self.stage_memory = {}  # request_id -> {stage_id: status}
+        self.request_context = {}  # request_id -> {"query": str, "intent": str}
 
         self.status = LabStatus()
         # [FEAT-136 / Story 95.21] In-Process Lab Attendant Supervisor (eliminates flat-file IPC fragility)
@@ -553,6 +554,14 @@ class FoyerRouter:
             )
             log_target = STAGE_LOG_TARGETS.get(stage_id, "logs/trace_lab.json")
             self.stage_memory.setdefault(request_id, {})[stage_id] = status
+            if "triage" in stage_id and detail and detail not in (
+                "kender_online",
+                "local_fallback",
+                "started",
+                "completed",
+                "unified_llm_synthesis",
+            ):
+                self.request_context.setdefault(request_id, {})["intent"] = detail
             try:
                 os.makedirs(os.path.dirname(STAGE_LEDGER_PATH), exist_ok=True)
                 with open(STAGE_LEDGER_PATH, "a") as f:
@@ -642,6 +651,8 @@ class FoyerRouter:
             import uuid
 
             request_id = uuid.uuid4().hex[:8]
+
+        self.request_context.setdefault(request_id, {})["query"] = query
 
         # Stage 1: Preamble & Triage (Kender · t=0, local fallback)
         if self.stage_memory.get(request_id, {}).get("stage1_kender_triage") is None:
@@ -5079,6 +5090,7 @@ class FoyerRouter:
         event = IntentEvent(query=query, source=source)
         if request_id:
             event.id = request_id
+            self.request_context.setdefault(request_id, {})["query"] = query
         try:
             os.makedirs(os.path.dirname(QUEUE_FILE), exist_ok=True)
             with open(QUEUE_FILE, "a") as f:
@@ -5262,7 +5274,22 @@ class FoyerRouter:
                         # [LAB-010/LAB-096] Judge Evaluation with Semaphore (max 2 concurrent)
                         if _mlx_judge is not None:
                             turn_trace = f"SOURCE:{source}\n{content}"
-                            context_window = f"request_id:{request_id}"
+                            req_ctx = getattr(self, "request_context", {}).get(request_id, {})
+                            u_query = req_ctx.get("query", "")
+                            u_intent = req_ctx.get("intent", "")
+                            u_domain = req_ctx.get("domain", "")
+                            context_parts = []
+                            if u_query:
+                                context_parts.append(f"QUERY: {u_query}")
+                            if u_domain:
+                                context_parts.append(f"DOMAIN: {u_domain}")
+                            if u_intent:
+                                context_parts.append(f"INTENT: {u_intent}")
+
+                            if context_parts:
+                                context_window = "\n".join(context_parts)
+                            else:
+                                context_window = f"request_id:{request_id}"
 
                             async def _run_mlx_judge(
                                 tt=turn_trace,
@@ -5690,9 +5717,14 @@ class FoyerRouter:
                 logger.error(f"Queue drainer failure: {e}")
             await asyncio.sleep(1)
 
-    def update_active_domain(self, domain):
+    def update_active_domain(self, domain, request_id=None, intent=None):
         """[Task 19.2] Propagate active triage domain to state and status center."""
         self.status.active_domain = domain
+        if request_id:
+            ctx = self.request_context.setdefault(request_id, {})
+            ctx["domain"] = domain
+            if intent:
+                ctx["intent"] = intent
         try:
             atomic_write_json(STATUS_JSON, self.status.to_dict())
             logger.info(

@@ -37,6 +37,28 @@ node = BicameralNode("MLXJudgeNode", MLX_SYSTEM_PROMPT)
 mcp = node.mcp
 
 
+def get_cluster_topology_summary() -> str:
+    """[Story 111.40] Extract cluster topology from existing infrastructure.json to ground the judge."""
+    infra = getattr(node, "infra", {})
+    hosts = infra.get("hosts", {})
+    lines = [
+        "# HOMELAB CLUSTER TOPOLOGY (Physical Ground Truth)",
+        "- Node 1 (Z87-Linux / localhost / 127.0.0.1): Primary Linux inference server with dual GPU (NVIDIA RTX 2080 Ti 11GB + Intel Arc B580 12GB), running Foyer (:8765), llama-server (:8088), ChromaDB (:8001).",
+    ]
+    for h_name, h_info in hosts.items():
+        if h_name.lower() in ("localhost", "127.0.0.1", "z87-linux"):
+            continue
+        ip = h_info.get("ip_hint", "")
+        if "kender" in h_name.lower():
+            desc = "Windows host (NVIDIA RTX 4090 24GB)"
+        elif "m5" in h_name.lower() or "air" in h_name.lower():
+            desc = "Apple Silicon host (M5 Air 32GB Unified Memory)"
+        else:
+            desc = f"Cluster node ({h_name})"
+        lines.append(f"- Node {h_name}: {desc} on {ip}")
+    return "\n".join(lines)
+
+
 # [FEAT-439] M5 Air MLX Offloading & Async Sanity Judge Protocol
 class MLXAsyncJudge:
     """[LAB-010 / FEAT-439 / FEAT-582] Multi-Seat Sovereign Judge Driver (M5 Air MLX with KENDER Fallback)."""
@@ -125,11 +147,16 @@ class MLXAsyncJudge:
                 {
                     "role": "system",
                     "content": (
-                        "You are Sovereign Lab Sanity Judge. Evaluate the turn trace for factual accuracy and conversational coherence.\n"
+                        "You are Sovereign Lab Sanity Judge. Evaluate the turn trace for end-to-end coherence from user query to final conclusion.\n\n"
+                        f"{get_cluster_topology_summary()}\n\n"
+                        "EVALUATION CRITERIA:\n"
+                        "1. Triage Accuracy: Evaluate whether the turn triage accurately captured and scoped the user's intent. If triage made a mistake, call it out directly.\n"
+                        "2. Grounding & Factual Accuracy: Check if the conclusion is grounded in physical reality and evidence without fabricated telemetry, phantom hardware specs, or surrogate numbers.\n\n"
                         "Emit strictly valid JSON matching this schema:\n"
                         "{\n"
-                        '  "critique": "string — factual accuracy and grounding reasoning",\n'
-                        '  "score": 0.0 to 1.0 — floating point score based directly on reasoning,\n'
+                        '  "triage_critique": "string — assessment of triage classification and scope",\n'
+                        '  "grounding_critique": "string — factual accuracy and evidence grounding of the conclusion",\n'
+                        '  "score": 0.0 to 1.0 — floating point score reflecting overall coherence and truthfulness,\n'
                         '  "retort": "string — concise verdict"\n'
                         "}"
                     ),
@@ -206,6 +233,14 @@ class MLXAsyncJudge:
                                     except Exception:
                                         pass
 
+                            triage_critique = ""
+                            grounding_critique = ""
+                            retort = ""
+                            if parsed_json and isinstance(parsed_json, dict):
+                                triage_critique = parsed_json.get("triage_critique", "")
+                                grounding_critique = parsed_json.get("grounding_critique", "")
+                                retort = parsed_json.get("retort", "")
+
                             return {
                                 "node_id": c_node_id,
                                 "status": status,
@@ -215,6 +250,9 @@ class MLXAsyncJudge:
                                 "active_model": c_model,
                                 "context_eval_length": eval_length,
                                 "critique": content,
+                                "triage_critique": triage_critique,
+                                "grounding_critique": grounding_critique,
+                                "retort": retort,
                                 "route_feedback": {
                                     "factual_target": "CHROMADB_PORT_8001",
                                     "persona_target": "CLI_VOICE_V1_LORA",
