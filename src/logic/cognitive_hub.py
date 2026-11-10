@@ -3894,7 +3894,9 @@ class CognitiveHub:
         primary_anchors = list(dict.fromkeys(query_hardware + query_anchors))
         all_anchors = list(dict.fromkeys(primary_anchors + curated_anchors))[:5]
 
-        if (all_anchors or vibe_now in ("HISTORICAL", "TECHNICAL")) and boosted_interest >= 0.35:
+        # [FEAT-451] Ripgrep ground truth hydration is strictly gated to HISTORICAL turns.
+        # Technical / operational turns rely on real-time silicon telemetry rather than field notes grep.
+        if vibe_now == "HISTORICAL" and boosted_interest >= 0.35:
             try:
                 from nodes.archive_node import execute_grep_search_pivot
             except ImportError:
