@@ -208,8 +208,7 @@ All diagnostic forensics MUST reference the canonical black box log:
 | **`opencode-core.service`** | Service | `user` | `127.0.0.1:4097` | Core OpenCode/Codex REST engine (`Headroom wrap codex serve`). |
 | **`field-notes.service`** | Service | `system` | `:9001` | Python HTTP Server serving the Field Notes static dashboard. |
 | **`acme-pager.service`** | Service | `system` | `:8501` | Neural Pager Streamlit activity log dashboard. |
-| **`field-notes-nibbler.service`** | Service | `user` | Background | Continuous load-aware note scanner and indexer. |
-| **`field-notes-nightly.timer`** | Timer | `user` | `02:00 AM` | Nightly 2:00 AM note synthesis & date aggregation sweep. |
+| **`field-notes-nightly.timer`** | Timer | `system` | `02:00 AM` | Nightly 2:00 AM maintenance sweep triggering `field-notes-nightly.service` (`nightly_forge.py`). Note intake runs in Step 7 (`mass_scan.py --once` / `nibble_v2.py`) until 05:00 AM cutoff. |
 
 3.  **Proxy Usage**: All agentic orchestration must flow through the **Native MCP Tools** (`lab_start`, `lab_stop`, `lab_quiesce`). These tools act as a stateless proxy to the resident service.
 | Tool | Intent | Physical Action |

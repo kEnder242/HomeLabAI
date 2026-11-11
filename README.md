@@ -60,7 +60,7 @@ The HomeLabAI execution environment coordinates with the static portfolio reposi
 
 HomeLabAI maps academic literature directly to operational code modules (documented in docs/plans/RESEARCH_SYNTHESIS.md):
 
-*   **FS-Researcher** (Dual-Agent Context/Report generation) $\rightarrow$ implemented via `nibble.py` (Context Builder).
+*   **FS-Researcher** (Dual-Agent Context/Report generation) $\rightarrow$ implemented via `nibble_v2.py` (Context Builder).
 *   **Agentic-R** (Utility-based retrieval ranking) $\rightarrow$ implemented via `ArchiveMemory` ranking.
 *   **Apple CLaRa** (Semantic log compression) $\rightarrow$ implemented via `SemanticCondenser` log compression.
 *   **Dreaming** (Subconscious memory compilation) $\rightarrow$ implemented via background `dream_cycle.py` summaries.
