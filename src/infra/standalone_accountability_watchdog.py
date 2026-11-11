@@ -528,11 +528,14 @@ def check_morning_round_table(run_live: bool = True):
         try:
             probe_script = BASE_DIR / "probe_round_table_accountability.py"
             if probe_script.exists():
+                cfg = load_thresholds()
+                timeouts = cfg.get("timeouts", {})
+                proc_timeout = int(timeouts.get("watchdog_probe_subprocess_timeout_sec", 140))
                 res = subprocess.run(
                     [sys.executable, str(probe_script)],
                     capture_output=True,
                     text=True,
-                    timeout=140
+                    timeout=proc_timeout
                 )
                 if res.returncode == 0 and res.stdout.strip():
                     try:
@@ -550,6 +553,15 @@ def check_morning_round_table(run_live: bool = True):
                             }
                     except Exception as parse_err:
                         logger.warning(f"Probe JSON parse failed: {parse_err}")
+                else:
+                    err_msg = res.stderr.strip() if res.stderr else "empty output"
+                    logger.warning(f"Probe process returned {res.returncode}: {err_msg[-300:]}")
+                    return {
+                        "name": "Synthetic Morning Round Table Probe",
+                        "passed": False,
+                        "detail": f"Probe exit {res.returncode}: {err_msg[-120:]}",
+                        "critic_score": 0.0
+                    }
         except Exception as e:
             logger.warning(f"Live round table probe failed: {e}")
 

@@ -18,6 +18,7 @@ import re
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 try:
@@ -43,36 +44,48 @@ JUDGE_BACKPRESSURE_PATH = os.path.join(DATA_DIR, "judge_backpressure.jsonl")
 
 
 def load_probe_thresholds() -> dict[str, Any]:
-    """Loads probe thresholds from lab_accountability_thresholds.json."""
+    """Loads probe thresholds and centralized timeouts from lab_accountability_thresholds.json."""
     config_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "config",
         "lab_accountability_thresholds.json",
     )
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r") as f:
-                data = json.load(f)
-                return data.get("round_table_probe", {})
-        except Exception:
-            pass
-    return {
+    res = {
         "max_triage_latency_ms": 400,
         "min_pinky_tokens": 10,
         "min_brain_tokens": 50,
         "min_thought_tokens": 40,
         "min_critic_score": 0.70,
+        "max_wait_seconds": 120.0,
+        "greeting_timeout_sec": 5.0,
+        "inject_timeout_sec": 10.0,
     }
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                data = json.load(f)
+                probe_cfg = data.get("round_table_probe", {})
+                timeouts = data.get("timeouts", {})
+                res.update(probe_cfg)
+                if "round_table_deliberation_max_wait_sec" in timeouts:
+                    res["max_wait_seconds"] = float(timeouts["round_table_deliberation_max_wait_sec"])
+                if "foyer_greeting_probe_timeout_sec" in timeouts:
+                    res["greeting_timeout_sec"] = float(timeouts["foyer_greeting_probe_timeout_sec"])
+                if "foyer_inject_timeout_sec" in timeouts:
+                    res["inject_timeout_sec"] = float(timeouts["foyer_inject_timeout_sec"])
+        except Exception:
+            pass
+    return res
 
 
 async def probe_greeting_latency(
-    session: "aiohttp.ClientSession", base_url: str
+    session: "aiohttp.ClientSession", base_url: str, timeout_sec: float = 5.0
 ) -> dict[str, Any]:
     """Measures quick reflex / greeting latency against Foyer."""
     start = time.perf_counter()
     url = f"{base_url}/health"
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=5.0)) as resp:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp:
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             if resp.status == 200:
                 data = await resp.json()
@@ -186,7 +199,7 @@ async def probe_deliberation_circuit(
     session: "aiohttp.ClientSession",
     base_url: str,
     topic: str = "Audit active silicon residency and memory topology.",
-    max_wait_seconds: float = 120.0,
+    max_wait_seconds: Optional[float] = None,
 ) -> dict[str, Any]:
     """
     Injects a synthetic probe query and monitors physical ledgers for ground-truth
@@ -194,6 +207,9 @@ async def probe_deliberation_circuit(
     """
     thresholds = load_probe_thresholds()
     min_critic = float(thresholds.get("min_critic_score", 0.70))
+    if max_wait_seconds is None:
+        max_wait_seconds = float(thresholds.get("max_wait_seconds", 120.0))
+    inject_timeout = float(thresholds.get("inject_timeout_sec", 10.0))
 
     start = time.perf_counter()
     url = f"{base_url}/inject"
@@ -202,7 +218,7 @@ async def probe_deliberation_circuit(
     try:
         # Step 1: Enqueue via /inject
         async with session.post(
-            url, json=payload, timeout=aiohttp.ClientTimeout(total=10.0)
+            url, json=payload, timeout=aiohttp.ClientTimeout(total=inject_timeout)
         ) as resp:
             if resp.status != 200:
                 return {
@@ -363,13 +379,17 @@ async def run_round_table_accountability_probe(
             "error": "aiohttp not installed in environment",
         }
 
+    thresholds = load_probe_thresholds()
+    greeting_timeout = float(thresholds.get("greeting_timeout_sec", 5.0))
+    max_wait = float(thresholds.get("max_wait_seconds", 120.0))
+
     start_total = time.perf_counter()
     async with aiohttp.ClientSession() as session:
         # Step 1: Greeting reflex test
-        greeting = await probe_greeting_latency(session, foyer_url)
+        greeting = await probe_greeting_latency(session, foyer_url, timeout_sec=greeting_timeout)
 
         # Step 2: Deliberation circuit test
-        circuit = await probe_deliberation_circuit(session, foyer_url, topic=topic)
+        circuit = await probe_deliberation_circuit(session, foyer_url, topic=topic, max_wait_seconds=max_wait)
 
     total_latency_ms = (time.perf_counter() - start_total) * 1000.0
 

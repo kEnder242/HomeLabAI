@@ -2073,12 +2073,27 @@ Memory operations are partitioned into 4 distinct, non-overlapping epistemic tie
 3. **Tier 3 (Technical Scars & Distilled Gems)**: High-density distilled engineering gems indexed in `long_term_wisdom`. Gems must preserve spatial anchors (`line_start`, `line_end`) referencing physical source files.
 4. **Tier 4 (Physical Raw Notes Ground Truth)**: Un-embedded physical journal `.txt` files in `/home/jallred/knowledge_base/`. Surgically hydrated on-demand into Deep Thought's prompt payload via automated Ripgrep search pivots (`[FEAT-451]`).
 
+---
 
+## BKM-101: The Post-Modification Live Shakedown Protocol (First-Run Verification Mandate)
+**Feature Anchor:** `[BKM-101]` / `[BKM-024]` / `[BKM-062]` / `[FEAT-619]` / `[LAB-110]`  
+**Colloquial Alias:** "The Live Shakedown", "Anti-Import Miss Mandate", "First-Run Sanity Gate"  
+**Tags:** `#shakedown`, `#live_validation`, `#first_run`, `#import_hygiene`, `#zero_regression`  
+**Domain:** Code Quality, Verification Engineering, Live Deployment, Diagnostics  
+**Status:** ACTIVE / MANDATORY  
 
+### 1. Diagnostic (What Failed)
+A persistent failure mode in rapid refactoring is declaring victory upon writing code without running a physical "shakedown". 
+- Example: Adding a helper or method (e.g. `resolve_probe_topic()` using `Path`) without importing `from pathlib import Path`. The code looks clean in diff, but fails catastrophically within 0.01s on initial invocation with `NameError: name 'Path' is not defined`.
+- Second-order failure: Diagnostic wrappers (e.g. watchdogs or sub-process runners) suppressing stderr on non-zero exit codes, masking obvious syntax/import regressions as ambiguous timeouts.
 
+### 2. The Shakedown Definition
+A **Shakedown** is an immediate, full-fidelity execution of the exact modified script, daemon path, or CLI tool in the authentic target environment (`.venv/bin/python3`, active environment variables, reachable network endpoints) immediately following code changes to prove the modification contains no obvious syntax errors, import misses, unbound variables, or runtime initialization crashes.
 
-
-
-
+### 3. Invariant Shakedown Mandates
+1. **First-Run Execution Before Certification**: Never consider an edit, bugfix, or feature complete based solely on a diff, unit mock, or static review. The agent MUST run the modified entrypoint end-to-end once (a live shakedown) in the target environment.
+2. **Target Python Virtual Environment Mandate**: Always invoke scripts using the authoritative project interpreter (e.g. `/home/jallred/Dev_Lab/HomeLabAI/.venv/bin/python3`), never the unconfigured system python.
+3. **Stderr Transparency in Watchdogs & Harnesses**: Subprocess harnesses and watchdog monitors MUST capture and log `res.stderr` when exit codes are non-zero. Suppressing stderr or returning generic "failed or timed out" strings is strictly forbidden.
+4. **Physical Output Inspection**: Verify the physical output artifact (e.g. `daily_accountability_digest.json`, stdout JSON) to confirm real data was generated rather than an unhandled fallback or empty stub.
 
 

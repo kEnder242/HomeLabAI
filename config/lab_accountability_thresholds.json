@@ -12,7 +12,16 @@
     "min_pinky_tokens": 10,
     "min_brain_tokens": 50,
     "min_thought_tokens": 40,
-    "min_critic_score": 0.70
+    "min_critic_score": 0.70,
+    "max_wait_seconds": 120.0
+  },
+  "timeouts": {
+    "round_table_deliberation_max_wait_sec": 120.0,
+    "watchdog_probe_subprocess_timeout_sec": 140.0,
+    "engine_warmup_timeout_sec": 90.0,
+    "foyer_greeting_probe_timeout_sec": 5.0,
+    "foyer_inject_timeout_sec": 10.0,
+    "foyer_status_timeout_sec": 5.0
   },
   "min_chromadb_vectors": 500
 }
