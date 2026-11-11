@@ -1,4 +1,7 @@
 {
+  "_doc": "HomeLabAI/docs/LAB_INFRASTRUCTURE.md:LAB-119",
+  "_feature_pointer": "Portfolio_Dev/FeatureTracker.md:[FEAT-685]",
+  "_protocols_pointer": "HomeLabAI/docs/Protocols.md:[BKM-101],[BKM-024],[BKM-062]",
   "power_clamp_watts": 165,
   "vram_quiesce_max_mb": 250,
   "min_curriculum_dialogue_pairs": 100,

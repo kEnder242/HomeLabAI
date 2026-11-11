@@ -642,13 +642,16 @@
   2. **Udev Rule Modernization**: Install `/etc/udev/rules.d/92-jellyfin-arc.rules` mapping PCI `0000:03:00.0` to a persistent symlink (`/dev/dri/arc_render`).
   3. **Multi-Tenancy Validation**: Verify simultaneous 4K AV1 subtitle burning while port 8088 serves high-throughput MoE speculative decoding.
 
+---
 
-
-
-
-
-
-
-
-
-
+### LAB-119: Centralized Timeout & Headroom Governance ([FEAT-685])
+* **Objective**: Centralize fragmented system timeouts and execution headroom into a single characterized, modifiable configuration home with zero documentation duplication across supporting artifacts.
+* **Feature Pointer**: [`Portfolio_Dev/FeatureTracker.md:[FEAT-685]`](file:///home/jallred/Dev_Lab/Portfolio_Dev/FeatureTracker.md#L4239)
+* **Canonical Configuration**: [`HomeLabAI/config/lab_accountability_thresholds.json:timeouts`](file:///home/jallred/Dev_Lab/HomeLabAI/config/lab_accountability_thresholds.json#L21-L28)
+* **Related Protocols**: [`HomeLabAI/docs/Protocols.md:BKM-101`](file:///home/jallred/Dev_Lab/HomeLabAI/docs/Protocols.md#L2078) (Shakedown), `BKM-024` (Live Verification), `BKM-062` (Ground Truth)
+* **Architectural Boundaries & Pointers**:
+  * **Round Table Pipeline Headroom**: `round_table_deliberation_max_wait_sec` (120s) in `lab_accountability_thresholds.json` sets the ceiling for end-to-end deliberation across Foyer, Brain, and Deep Thought.
+  * **Watchdog Execution Buffer**: `watchdog_probe_subprocess_timeout_sec` (140s) provides the sub-process wrapper headroom for `standalone_accountability_watchdog.py` (`[FEAT-619]`).
+  * **Engine Warmup Soak**: `engine_warmup_timeout_sec` (90s) in `src/nodes/loader.py` (`[FEAT-462]`) governs the anchor warmup retry loop, preventing false crash flags during nightly engine restarts.
+  * **Foyer Protocol Probes**: `foyer_greeting_probe_timeout_sec` (5s), `foyer_inject_timeout_sec` (10s), `foyer_status_timeout_sec` (5s).
+* **Anti-Duplication Standard**: Supporting feature documents and sprint files must point directly to `lab_accountability_thresholds.json:timeouts` and this section rather than duplicating narrative timeout blocks.
