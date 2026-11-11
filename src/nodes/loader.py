@@ -7,6 +7,7 @@ import queue
 import socket
 import threading
 import time
+from pathlib import Path
 
 import aiohttp
 import requests
@@ -657,10 +658,30 @@ class BicameralNode:
                     prefix = "Narf! " if self.name == "Pinky" else ""
                     yield f"{prefix}The local engine is warming its anchors right now. Re-connecting momentarily!"
 
-                    # Hold the line and retry ping_engine for up to 60 seconds
+                    # [FEAT-462] Hold the line and retry ping_engine for configurable warmup timeout
+                    warmup_timeout = 90.0
+                    try:
+                        cfg_path = (
+                            Path(__file__).resolve().parent.parent.parent
+                            / "config"
+                            / "lab_accountability_thresholds.json"
+                        )
+                        if cfg_path.exists():
+                            with open(cfg_path, "r", encoding="utf-8") as f:
+                                cfg_data = json.load(f)
+                                warmup_timeout = float(
+                                    cfg_data.get("timeouts", {}).get(
+                                        "engine_warmup_timeout_sec", 90.0
+                                    )
+                                )
+                    except Exception:
+                        pass
+
                     warmed = False
-                    for _ in range(20):  # 20 iterations * 3s = 60s
-                        await asyncio.sleep(3)
+                    step_delay = 3.0
+                    iterations = max(1, int(warmup_timeout / step_delay))
+                    for _ in range(iterations):
+                        await asyncio.sleep(step_delay)
                         ok, msg = await self.ping_engine()
                         if ok:
                             warmed = True
@@ -670,7 +691,7 @@ class BicameralNode:
                             break
 
                     if not warmed:
-                        yield f"\n[{self.name}] Engine failed to finish warming within 60s. Please retry momentarily."
+                        yield f"\n[{self.name}] Engine failed to finish warming within {int(warmup_timeout)}s. Please retry momentarily."
                         return
                 else:
                     yield f"Error: {msg}"

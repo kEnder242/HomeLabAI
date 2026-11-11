@@ -11,6 +11,7 @@ All technical reports, post-mortems, and engineering notes must follow the BKM (
 2. **The Core Logic:** Distilled logic or critical configuration lines.
 3. **The Trigger:** What specific event or metric initiates this action?
 4. **The Scars:** Retrospective of mis-steps or "What to avoid."
+5. **Pointed Conversation Structure:** Emit `1) 1.1) 1.1.1)` pointed formatting in untracked reports for seamless adoption into tracked conversation lanes.
 
 ## 🛠️ Technical Boundaries & Safety
 - **Git Protocol:** I am authorized to stage (`git add`) and commit (`git commit`), but I must **NEVER** push to a remote. The user handles all push operations.
