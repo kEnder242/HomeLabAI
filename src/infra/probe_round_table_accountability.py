@@ -303,14 +303,56 @@ async def probe_deliberation_circuit(
         }
 
 
+def resolve_probe_topic(cli_topic: str | None = None) -> str:
+    """Select probe topic: CLI argument > latest_synthesis_gems rotation > archetype rotation.
+    
+    Prevents morning probe and daily assessments from stagnating in a local minimum on a single prompt.
+    """
+    if cli_topic and cli_topic.strip():
+        return cli_topic.strip()
+
+    # Attempt to load from latest_synthesis_gems.json
+    gems_path = Path("/home/jallred/Dev_Lab/Portfolio_Dev/field_notes/data/latest_synthesis_gems.json")
+    if gems_path.exists():
+        try:
+            with open(gems_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            gems = data.get("gems", [])
+            if gems:
+                # Rotate across available top gems using day-of-year
+                day_idx = datetime.now().timetuple().tm_yday
+                # Alternate between operational probe (day 0 mod 2) and an extracted gem (day 1 mod 2)
+                if day_idx % 2 == 1:
+                    gem_idx = (day_idx // 2) % len(gems)
+                    summary = gems[gem_idx].get("summary", "")
+                    clean = re.sub(r"^\[.*?\]\s*", "", summary).strip()
+                    if clean:
+                        return clean
+        except Exception as e:
+            logger.debug(f"Could not load dynamic gem topic: {e}")
+
+    # Fallback to rotating domain archetypes
+    archetypes = [
+        "Audit active silicon residency and memory topology.",
+        "Examine the Kayak and Montana platform transition and native PECI execution.",
+        "Review Clearwater Forest (CWF) and Diamond Rapids (DMR) manageability and Redfish test collateral.",
+        "Audit DMR MMIO register adaptation and pre-silicon Simics validation test cases.",
+        "Audit PECI transaction metrics and thermal stress testing methodology.",
+    ]
+    idx = datetime.now().timetuple().tm_yday % len(archetypes)
+    return archetypes[idx]
+
+
 async def run_round_table_accountability_probe(
     foyer_url: str = DEFAULT_FOYER_URL,
-    topic: str = "Audit active silicon residency and memory topology.",
+    topic: str | None = None,
 ) -> dict[str, Any]:
     """
     Executes the unified Ground-Truth Round Table Accountability Probe.
     Returns telemetry adhering to FEAT-608 / LAB-110 and BKM-062.
     """
+    if not topic:
+        topic = resolve_probe_topic()
     if aiohttp is None:
         return {
             "status": "FAIL",
@@ -366,9 +408,19 @@ async def run_round_table_accountability_probe(
 
 def main():
     """CLI runner for direct probe execution."""
-    foyer_url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_FOYER_URL
-    logger.info(f"🚀 Running Ground-Truth Round Table Accountability Probe against {foyer_url}...")
-    result = asyncio.run(run_round_table_accountability_probe(foyer_url))
+    foyer_url = DEFAULT_FOYER_URL
+    topic = None
+    for arg in sys.argv[1:]:
+        if arg.startswith("http://") or arg.startswith("https://"):
+            foyer_url = arg
+        elif arg.startswith("--topic="):
+            topic = arg.split("=", 1)[1]
+        elif not arg.startswith("-"):
+            topic = arg
+
+    resolved_topic = resolve_probe_topic(topic)
+    logger.info(f"🚀 Running Ground-Truth Round Table Accountability Probe against {foyer_url} (Topic: {resolved_topic[:60]})...")
+    result = asyncio.run(run_round_table_accountability_probe(foyer_url, topic=resolved_topic))
     print(json.dumps(result, indent=2))
     # [Story 111.20] Exit non-zero on FAIL, DEGRADED, or absent sovereign quorum
     if (
