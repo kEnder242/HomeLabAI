@@ -532,7 +532,7 @@ def check_morning_round_table(run_live: bool = True):
                     [sys.executable, str(probe_script)],
                     capture_output=True,
                     text=True,
-                    timeout=120
+                    timeout=140
                 )
                 if res.returncode == 0 and res.stdout.strip():
                     try:
