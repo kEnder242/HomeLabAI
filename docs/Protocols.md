@@ -2046,7 +2046,7 @@ Nightly operations execute strictly in sequential phases within dedicated time w
 5. **06:00 AM (Decoupled Accountability Watchdog per FEAT-608)**: Standalone watchdog executes the synthetic morning probe and audits overnight health.
 
 ### 3. Invariant Operational Directives
-1. **Zero 24/7 Background Workers**: Persistent continuous scanning services (`field-notes-nibbler.service`) are strictly barred. Mass scan runs exclusively as Step 7 inside `nightly_forge.py` with an enforced 05:00 AM hard cutoff gate.
+1. **Zero 24/7 Background Daemons & Sparse Daytime Intake (Story 110.4)**: Persistent continuous scanning daemons (`field-notes-nibbler.service`) remain permanently retired. Note ingestion (`nibble_v2.py`) executes outside of nightly in sparse batches (`limit=2`) protected by Foyer socket preemption (yielding whenever port 8765 or `/tmp/foyer_intercom.lock` is active). Overnight tail mop-up and mass scan execute inside `nightly_forge.py` with an enforced 05:00 AM hard cutoff gate (`FEAT-416`). Heavy GPU LoRA training and diamond gem refinement (`refine_gem.py`) remain strictly quarantined to the nightly window.
 2. **Strict Daemon Process Boundaries**: External batch maintenance scripts must NEVER directly truncate or mutate files actively open and tailed by running daemons (e.g. `foyer_queue.jsonl` under `lab-attendant.service`). Foyer must manage its own queue compaction in-process during idle periods.
 3. **In-Pipeline Serialization**: Tasks within `nightly_forge.py` execute synchronously in a single process thread; dreaming and gem refinement never execute concurrently.
 
