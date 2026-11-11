@@ -199,14 +199,18 @@
 2.  **Resource Limits**: Configured with `MemoryHigh=500M` and `MemoryMax=1000M` to maintain lightweight memory residency.
 3.  **Circuit Breaker Integration**: Configured with `StartLimitIntervalSec=60s` and `StartLimitBurst=3` (BKM-038).
 
-### LAB-009: Field Notes Nightly Conveyor Belt & Intake Architecture (Timer & Cutoff Gate)
-**Objective**: Maintain zero-concurrency overnight maintenance scheduling (BKM-099) without 24/7 background workers.
+### LAB-009: Field Notes Intake Architecture & Sparse Daytime Cadence (Story 110.4 / FEAT-416)
+**Objective**: Maintain zero-concurrency overnight maintenance scheduling (BKM-099) while enabling responsive, non-blocking note intake without 24/7 background daemons.
 
-1.  **Zero 24/7 Background Workers**: Continuous background daemon `field-notes-nibbler.service` is permanently retired to ensure daytime host VRAM quiescence and avoid tripping the Lab Attendant's idle timer.
-2.  **Nightly Maintenance Sweep (`field-notes-nightly.timer`)**:
-    *   **Architecture**: Managed via systemd timer `field-notes-nightly.timer` (`OnCalendar=*-*-* 02:00:00`) triggering oneshot service `field-notes-nightly.service` (`nightly_forge.py`).
+1.  **Zero 24/7 Background Daemons**: Continuous background daemon `field-notes-nibbler.service` is permanently retired to prevent unmanaged CPU churn and avoid tripping the Lab Attendant's idle timer.
+2.  **Sparse Daytime Intake Cadence (Story 110.4 / BKM-086)**:
+    *   **Architecture**: `Portfolio_Dev/field_notes/nibble_v2.py` is tuned to execute outside of nightly in bounded, sparse batches (default `limit=2` chunks per invocation).
+    *   **Foyer Intercom Socket Preemption**: Daytime execution is protected against conversational interference via `check_foyer_intercom_active()`, which probes established TCP sockets on port 8765 (`ss -t state established '( sport = :8765 or dport = :8765 )'`) and `/tmp/foyer_intercom.lock`. If an interactive session is detected, Nibbler yields instantly.
+    *   **Silicon Memory & Zero Host Spilling**: As certified in Sprint 110 (Stories 110.18–110.20 / `moe-cuda-rpc`), the 35B parameter model does **NOT** remain resident in host system (DDR3) memory. It resides 100% inside the 23GB dedicated dual-GPU pool (RTX 2080 Ti 10GB CUDA + Intel Arc B580 12GB RPC) with `--no-host`. Nibbler operates with a lightweight ~30MB memory footprint and yields only if available host RAM drops below 0.8 GB.
+3.  **Nightly Maintenance Sweep (`field-notes-nightly.timer`)**:
+    *   **Architecture**: Managed via systemd timer `field-notes-nightly.timer` (`OnCalendar=*-*-* 02:00:00`) triggering oneshot service `field-notes-nightly.service` (`nightly_forge.py`). Heavy GPU LoRA training and diamond gem refinement (`refine_gem.py`) remain strictly quarantined to this window (`FEAT-416`).
     *   **Intake & Mass Scan (Step 7)**: Bounded batch sweep running `field_notes/mass_scan.py --once` which invokes `nibble_v2.py --fast`. Enforces a strict 05:00 AM hard cutoff gate (`FEAT-416`) before morning audits.
-    *   **State & Queue**: Tracks progress in `Portfolio_Dev/field_notes/data/chunk_state.json` and `queue.json`. Logs to stdout and `pinky_v2.log`.
+    *   **State & Queue**: Tracks progress in `Portfolio_Dev/field_notes/data/chunk_state.json` and `queue.json`. Logs to stdout and `pinky.log` (with `pinky_v2.log` symlinked for backward compatibility).
 
 ### LAB-010: Apple M5 Inference Node Integration & Async Judge Protocol
 **Objective**: Integrate Node 3 (Apple M5 MacBook Air 10-Core CPU, 32GB Unified Memory) into the Round Table topology as an ultra-fast Metal-accelerated OpenAI-compliant REST provider and asynchronous 131K sanity judge.
