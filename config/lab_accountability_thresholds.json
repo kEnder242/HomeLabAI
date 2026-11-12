@@ -22,6 +22,7 @@
     "round_table_deliberation_max_wait_sec": 120.0,
     "watchdog_probe_subprocess_timeout_sec": 140.0,
     "engine_warmup_timeout_sec": 90.0,
+    "engine_reignition_probe_timeout_sec": 240.0,
     "foyer_greeting_probe_timeout_sec": 5.0,
     "foyer_inject_timeout_sec": 10.0,
     "foyer_status_timeout_sec": 5.0
