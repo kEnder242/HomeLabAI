@@ -27,6 +27,8 @@ OPENCODE_REST_PORT = 4097
 OPENCODE_WEB_PORT = 4096
 OPENCODE_ATTACH_URL = f"http://127.0.0.1:{OPENCODE_REST_PORT}/"
 OPENCODE_WEB_URL = f"http://127.0.0.1:{OPENCODE_WEB_PORT}/"
+M5_AIR_HOST = os.environ.get("M5_AIR_HOST", "Jasons-MacBook-Air.local")
+KENDER_HOST = os.environ.get("KENDER_HOST", "kender.local")
 
 _ACTIVE_SESSION_ID = None
 SESSION_BREADCRUMB_FILE = "/tmp/active_openagent_sessions.json"
@@ -485,7 +487,7 @@ def _extract_telemetry_knobs(
 
     # 4. Probe server-side Headroom state (Port 8002)
     try:
-        req = urllib.request.Request("http://192.168.1.46:8002/status")
+        req = urllib.request.Request(f"http://{M5_AIR_HOST}:8002/status")
         with urllib.request.urlopen(req, timeout=0.5) as resp:
             hdata = json.loads(resp.read().decode("utf-8"))
             knobs["server_kv_mode"] = hdata.get("mode", "unknown")
@@ -964,7 +966,7 @@ def _format_error_context(exc) -> str:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.3)
         m5_status = (
-            "UP" if s.connect_ex(("192.168.1.46", 8002)) == 0 else "DOWN/REFUSED"
+            "UP" if s.connect_ex((M5_AIR_HOST, 8002)) == 0 else "DOWN/REFUSED"
         )
         s.close()
     except Exception:
@@ -976,7 +978,7 @@ def _format_error_context(exc) -> str:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.3)
         w4090_status = (
-            "UP" if s.connect_ex(("192.168.1.26", 11434)) == 0 else "DOWN/REFUSED"
+            "UP" if s.connect_ex((KENDER_HOST, 11434)) == 0 else "DOWN/REFUSED"
         )
         s.close()
     except Exception:
@@ -1134,9 +1136,9 @@ def _log_live_usage_telemetry(
 def _is_provider_reachable(provider_id: str) -> bool:
     """Pre-probes local silicon endpoints (0.8s timeout) to avoid 60s OpenCode HTTP socket stalls."""
     if "4090" in provider_id or "kender" in provider_id or "windows" in provider_id:
-        return _ping_host("192.168.1.26", 11434, timeout=0.5)
+        return _ping_host(KENDER_HOST, 11434, timeout=0.5)
     if "m5" in provider_id or "mlx" in provider_id:
-        return _ping_host("192.168.1.46", 8000, timeout=0.5) or _ping_host("192.168.1.46", 8002, timeout=0.5)
+        return _ping_host(M5_AIR_HOST, 8000, timeout=0.5) or _ping_host(M5_AIR_HOST, 8002, timeout=0.5)
     return True
 
 
@@ -1156,9 +1158,9 @@ def _run_bkm049_diagnostics(
         "session_id": sid,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "opencode_rest": _ping_host("127.0.0.1", OPENCODE_REST_PORT),
-        "m5_silicon": _ping_host("192.168.1.46", 8002)
-        or _ping_host("192.168.1.46", 8000),
-        "w4090_silicon": _ping_host("192.168.1.26", 11434),
+        "m5_silicon": _ping_host(M5_AIR_HOST, 8002)
+        or _ping_host(M5_AIR_HOST, 8000),
+        "w4090_silicon": _ping_host(KENDER_HOST, 11434),
         "session_turns": 0,
         "session_errors": [],
     }
@@ -2185,7 +2187,7 @@ In 1-2 brief sentences, state any blocker or ambiguity encountered during execut
                 if local_only:
                     # Check KENDER (RTX 4090)
                     try:
-                        k_req = urllib.request.Request("http://192.168.1.26:11434/api/ps")
+                        k_req = urllib.request.Request(f"http://{KENDER_HOST}:11434/api/ps")
                         with urllib.request.urlopen(k_req, timeout=1.5) as k_resp:
                             k_data = json.loads(k_resp.read().decode("utf-8"))
                             models = k_data.get("models", [])

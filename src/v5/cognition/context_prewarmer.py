@@ -20,7 +20,10 @@ import urllib.error
 CONTEXT_CACHE_DIR = os.environ.get("JIT_CACHE_DIR", os.path.expanduser("~/Dev_Lab/.jit_cache"))
 CONTEXT_CACHE_PATH = os.path.join(CONTEXT_CACHE_DIR, "clara_context_cache.json")
 SUB_INFERENCE_LEDGER_PATH = os.path.join(CONTEXT_CACHE_DIR, "sub_inference_ledger.jsonl")
-M5_AIR_HEADROOM_URL = "http://192.168.1.46:8002/v1/chat/completions"
+M5_AIR_HOST = os.environ.get("M5_AIR_HOST", "Jasons-MacBook-Air.local")
+M5_AIR_HEADROOM_URL = os.environ.get(
+    "M5_AIR_HEADROOM_URL", f"http://{M5_AIR_HOST}:8002/v1/chat/completions"
+)
 M5_AIR_MODEL = "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp"
 
 
