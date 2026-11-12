@@ -1776,6 +1776,38 @@ When human judgment is required to evaluate quality, brevity, or persona tone:
 1. **Question 1 (Objective Benchmark Selection)**: Present the quantitative results across 2–3 variants (latency, token count, parse reliability) and select the empirical baseline.
 2. **Question 2 (Subjective Tone Calibration)**: Present the qualitative outputs with focused directional suggestions for operator alignment.
 
+### 3. The Modus Operandi (MO) & Tagged Expectations Standard
+Under `BKM-088 §3` (Sprint 112.1 evolution), empirical verification expands beyond ad-hoc scoring into a structured, step-by-step expectation framework:
+
+1. **The Equivalence of Terms**:
+   > **`MO` $\equiv$ `tags per stage` $\equiv$ `expectations`** (used interchangeably across lab documentation).
+   An MO represents the declarative ground-truth expectation vector for each discrete stage of the pipeline (triage domain/vibe, ClaraDB retrieval recall, reasoning anchors, and terminal delivery posture).
+
+2. **The Runtime Blindness Invariant**:
+   Runtime generation models (`Pinky`, `Deep Thought`, `Brain`) and the sovereign `MLX Judge` must be **100% BLIND** to the MO during turn execution. The MO is NEVER injected into runtime prompts. It exists strictly out-of-band for the nightly audit watchdog (`standalone_accountability_watchdog.py`) to audit the pipeline and verify that the judge did not award a "Green Lie".
+
+3. **The 4 Expectation Sources (ABCD Framework)**:
+   - **Source A (`Test Probe`)**: Fixed, frozen synthetic benchmark archetypes with deterministic stage expectations.
+   - **Source B (`Nightly AGY`)**: Curated expectations authored during sprint pre-flight planning and retrospective forensics.
+   - **Source C (`Nightly Oracle`)**: Autonomous 02:00–06:00 AM Cloud Oracle pass that inspects newly ingested notes, mines prospective test primers, and compiles their expected stage tags.
+   - **Source D (`Human`)**: Direct operator-specified ground truth and expectation vectors.
+
+4. **The Anti-Consensus Bubble Invariant**:
+   Expectations MUST be established prior to or strictly isolated from execution results. An expectation is NEVER generated alongside the run it is judging. Post-generation evaluation is executed blindly against the pre-compiled MO vector, completely eliminating expectation bleed and self-fulfilling consensus loops.
+
+5. **The Conditional Pass Standard & Epistemic Accountability**:
+   - If a primer queries a concept with genuinely zero records in ClaraDB, the MO tags `permissible_outcome: "REFUSAL_MANDATORY"`. When Pinky acknowledges evidence limits, the watchdog awards an expected **Conditional Pass**.
+   - Conversely, if records exist in ClaraDB (e.g. in `artifact_vault` or `lab_journal`) and the model takes an easy refusal route, the watchdog records a **`LAZY_REFUSAL_DEFECT`** (False-Negative Green Lie), overriding any shallow high score from the judge.
+
+6. **Conversational Continuity Expectations (`CONTINUITY_VECTOR`)**:
+   MO stage expectations track multi-turn continuity:
+   - `stage2_brain`: Expects emission of `[CONTINUITY_VECTOR: THREAD_CONTINUATION]` or `[CONTINUITY_VECTOR: TOPIC_PIVOT]`.
+   - `stage3_deep_thought`: On `TOPIC_PIVOT`, expects hydration of the **Untangling Directive**, actively warning Pinky against conflating prior conversational entities with the current inquiry.
+   - `stage5_pinky`: Expects direct resolution without hallucinating entities from prior turns.
+
+7. **Canonical Ledger Archive**:
+   All tagged MO specifications are persisted to `Portfolio_Dev/field_notes/data/mo_expectations_ledger.jsonl` with flexible per-stage expectation columns and historical audit runs.
+
 ---
 
 ## BKM-089: Prompt MO & Evaluation Asymmetry Protocol (Frugal Prompts, Rich Rubrics & Semantic Evaluation)
