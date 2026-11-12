@@ -126,8 +126,8 @@
         {
             "id": "M5_AIR",
             "name": "M5_AIR",
-            "host": "192.168.1.46",
-            "fallback_hosts": ["100.101.45.10", "jasons-macbook-air"],
+            "host": "Jasons-MacBook-Air.local",
+            "fallback_hosts": ["192.168.1.46", "100.101.45.10", "jasons-macbook-air"],
             "port": 8000,
             "protocol": "OPENAI",
             "probe_path": "/v1/models",
@@ -139,8 +139,8 @@
         {
             "id": "KENDER",
             "name": "KENDER",
-            "host": "192.168.1.26",
-            "fallback_hosts": [],
+            "host": "kender.local",
+            "fallback_hosts": ["192.168.1.26"],
             "port": 11434,
             "protocol": "OLLAMA",
             "probe_path": "/api/tags",
