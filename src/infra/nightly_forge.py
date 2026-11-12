@@ -441,14 +441,26 @@ def re_ignite_vllm():
 
 
 def _v1_models_blocking_probe(
-    timeout_total: int = 180, poll_interval: float = 2, single_timeout: float = 5
+    timeout_total: int | None = None, poll_interval: float = 2, single_timeout: float = 5
 ) -> bool:
-    """[FEAT-101.8] Blocking probe gate. Polls http://127.0.0.1:8088/v1/models until 200 OK.
+    """[FEAT-101.8 / FEAT-685] Blocking probe gate. Polls http://127.0.0.1:8088/v1/models until 200 OK.
 
-    Respects the overall total timeout (180s) across poll attempts; each GET uses
-    single_timeout=5s. Returns True on 200 OK, False if no 200 is seen within
+    Respects the overall total timeout (default 240s, or centralized via lab_accountability_thresholds.json);
+    each GET uses single_timeout=5s. Returns True on 200 OK, False if no 200 is seen within
     timeout_total or errors occur continuously.
     """
+    if timeout_total is None:
+        try:
+            cfg_path = os.path.join(HOMELAB_DIR, "config", "lab_accountability_thresholds.json")
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    timeout_total = int(cfg.get("timeouts", {}).get("engine_reignition_probe_timeout_sec", 240.0))
+        except Exception:
+            pass
+    if timeout_total is None:
+        timeout_total = 240
+
     elapsed = 0.0
     start_time = time.monotonic()
     while elapsed < timeout_total:
@@ -464,7 +476,7 @@ def _v1_models_blocking_probe(
         time.sleep(poll_interval)
         elapsed = time.monotonic() - start_time
     logger.warning(
-        "[FEAT-136] v1/models probe gate timed out after 180s - port 8088 did not return 200 OK."
+        f"[FEAT-136 / FEAT-685] v1/models probe gate timed out after {timeout_total}s - port 8088 did not return 200 OK."
     )
     return False
 
