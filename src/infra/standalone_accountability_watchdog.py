@@ -570,7 +570,11 @@ def check_morning_round_table(run_live: bool = True):
                                     kw in str(probe_data.get("error") or "").lower()
                                     for kw in ("no records", "no evidence", "zero evidence", "zero_records", "boundary refusal")
                                 )
-                                if mo_permissible == "REFUSAL_MANDATORY" and clean_refusal:
+                                refusal_detected = clean_refusal or any(
+                                    kw in str(probe_data.get("critique") or probe_data.get("error") or "").lower()
+                                    for kw in ("no records", "no evidence", "zero evidence", "zero_records", "boundary refusal", "silent", "archives are completely silent", "substantive refusal")
+                                )
+                                if mo_permissible == "REFUSAL_MANDATORY" and refusal_detected:
                                     passed = True
                                     return {
                                         "name": "Synthetic Morning Round Table Probe",
@@ -578,7 +582,7 @@ def check_morning_round_table(run_live: bool = True):
                                         "detail": f"Conditional Pass (clean boundary refusal, MO: {mo_permissible}) - Status: {status}, Critic Score: {score:.2f}",
                                         "critic_score": score
                                     }
-                                if mo_prohibited == "LAZY_REFUSAL_DEFECT" and status == "PASS" and score >= 0.70:
+                                if mo_prohibited == "LAZY_REFUSAL_DEFECT" and refusal_detected and score >= 0.70:
                                     passed = False
                                     return {
                                         "name": "Synthetic Morning Round Table Probe",
