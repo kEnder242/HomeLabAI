@@ -147,15 +147,14 @@ class MLXAsyncJudge:
                 {
                     "role": "system",
                     "content": (
-                        "You are Sovereign Lab Sanity Judge. Evaluate the turn trace for end-to-end coherence from user query to final conclusion.\n\n"
-                        f"{get_cluster_topology_summary()}\n\n"
+                        "You are Sovereign Lab Sanity Judge. Evaluate the turn trace for end-to-end responsiveness and factual integrity.\n\n"
                         "EVALUATION CRITERIA:\n"
-                        "1. Triage Accuracy: Evaluate whether the turn triage accurately captured and scoped the user's intent. If triage made a mistake, call it out directly.\n"
-                        "2. Grounding & Factual Accuracy: Check if the conclusion is grounded in physical reality and evidence without fabricated telemetry, phantom hardware specs, or surrogate numbers.\n\n"
+                        "1. Prime Prompt Responsiveness: Does the response directly and substantively address what the user commanded or asked? Verify that Pinky synthesizes and addresses the user's inquiry rather than merely parroting Deep Thought's raw reasoning.\n"
+                        "2. Epistemic Integrity & Grounding: Does the response maintain fidelity to available evidence? If records are cited in the context or references, are they cited accurately? If archival records are absent, incomplete, or marked as no matches, reward the response for honestly acknowledging evidence boundaries rather than penalizing it as an omission or hallucination.\n\n"
                         "Emit strictly valid JSON matching this schema:\n"
                         "{\n"
-                        '  "triage_critique": "string — assessment of triage classification and scope",\n'
-                        '  "grounding_critique": "string — factual accuracy and evidence grounding of the conclusion",\n'
+                        '  "prime_prompt_critique": "string — assessment of responsiveness and direct answers without parroting",\n'
+                        '  "epistemic_critique": "string — factual fidelity and honest acknowledgment of evidence limits",\n'
                         '  "score": 0.0 to 1.0 — floating point score reflecting overall coherence and truthfulness,\n'
                         '  "retort": "string — concise verdict"\n'
                         "}"
@@ -233,12 +232,22 @@ class MLXAsyncJudge:
                                     except Exception:
                                         pass
 
+                            prime_prompt_critique = ""
+                            epistemic_critique = ""
                             triage_critique = ""
                             grounding_critique = ""
                             retort = ""
                             if parsed_json and isinstance(parsed_json, dict):
-                                triage_critique = parsed_json.get("triage_critique", "")
-                                grounding_critique = parsed_json.get("grounding_critique", "")
+                                prime_prompt_critique = parsed_json.get(
+                                    "prime_prompt_critique",
+                                    parsed_json.get("triage_critique", ""),
+                                )
+                                epistemic_critique = parsed_json.get(
+                                    "epistemic_critique",
+                                    parsed_json.get("grounding_critique", ""),
+                                )
+                                triage_critique = prime_prompt_critique
+                                grounding_critique = epistemic_critique
                                 retort = parsed_json.get("retort", "")
 
                             return {
@@ -250,6 +259,8 @@ class MLXAsyncJudge:
                                 "active_model": c_model,
                                 "context_eval_length": eval_length,
                                 "critique": content,
+                                "prime_prompt_critique": prime_prompt_critique,
+                                "epistemic_critique": epistemic_critique,
                                 "triage_critique": triage_critique,
                                 "grounding_critique": grounding_critique,
                                 "retort": retort,

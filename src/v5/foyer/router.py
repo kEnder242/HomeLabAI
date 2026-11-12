@@ -5260,55 +5260,125 @@ class FoyerRouter:
                         # [Story 107.20 / FEAT-498] Telemetry is logged directly via handle_telemetry_ingest
                         # from physical node execution receipts in loader.py (zero synthetic 35 tok/s estimation).
 
-                        # [SPR-52.0 / Task 52.3] Stage 5: contract completion (idempotent)
-                        if (
-                            self.stage_memory.get(request_id, {}).get(
-                                "stage5_pinky_review"
+                        # [Story 112.30] If Deep Thought reasoning completes, cache citations for JIT Judge context
+                        if "thought" in s_lower and content:
+                            req_ctx_obj = getattr(self, "request_context", {}).setdefault(request_id, {})
+                            req_ctx_obj["cited_references"] = content
+
+                        # [Story 112.10 / FEAT-444] Decouple node stream completion from full waterfall completion:
+                        # Stage 5 contract and Sovereign Judge dispatch execute strictly on terminal Pinky completion.
+                        is_waterfall_pipeline_complete = bool(
+                            final and any(
+                                p in s_lower
+                                for p in ("pinky (response)", "pinky (voice)", "pinky")
                             )
-                            is None
-                        ):
-                            await self._emit_stage_progress(
-                                "stage5_pinky_review", request_id, "COMPLETED"
-                            )
+                        )
 
-                        # [LAB-010/LAB-096] Judge Evaluation with Semaphore (max 2 concurrent)
-                        if _mlx_judge is not None:
-                            turn_trace = f"SOURCE:{source}\n{content}"
-                            req_ctx = getattr(self, "request_context", {}).get(request_id, {})
-                            u_query = req_ctx.get("query", "")
-                            u_intent = req_ctx.get("intent", "")
-                            u_domain = req_ctx.get("domain", "")
-                            context_parts = []
-                            if u_query:
-                                context_parts.append(f"QUERY: {u_query}")
-                            if u_domain:
-                                context_parts.append(f"DOMAIN: {u_domain}")
-                            if u_intent:
-                                context_parts.append(f"INTENT: {u_intent}")
-
-                            if context_parts:
-                                context_window = "\n".join(context_parts)
-                            else:
-                                context_window = f"request_id:{request_id}"
-
-                            async def _run_mlx_judge(
-                                tt=turn_trace,
-                                cw=context_window,
-                                rid=request_id,
-                                src=source,
+                        if is_waterfall_pipeline_complete:
+                            # [SPR-52.0 / Task 52.3] Stage 5: contract completion (idempotent)
+                            if (
+                                self.stage_memory.get(request_id, {}).get(
+                                    "stage5_pinky_review"
+                                )
+                                is None
                             ):
-                                try:
-                                    async with _judge_semaphore:
+                                await self._emit_stage_progress(
+                                    "stage5_pinky_review", request_id, "COMPLETED"
+                                )
+
+                            # [Story 112.10] Memory hygiene: maintain bounded 10-turn rolling session history
+                            if len(self.stage_memory) > 10:
+                                excess_keys = list(self.stage_memory.keys())[:-10]
+                                for k in excess_keys:
+                                    self.stage_memory.pop(k, None)
+                                    if hasattr(self, "request_context"):
+                                        self.request_context.pop(k, None)
+
+                            # [LAB-010/LAB-096 / Story 112.10] Uncoupled Sovereign Judge Dispatch
+                            if _mlx_judge is not None:
+                                turn_trace = f"SOURCE:{source}\n{content}"
+                                req_ctx = getattr(self, "request_context", {}).get(request_id, {})
+                                u_query = req_ctx.get("query", "")
+                                u_intent = req_ctx.get("intent", "")
+                                u_domain = req_ctx.get(
+                                    "domain", getattr(self.status, "active_domain", "")
+                                )
+                                u_vibe = str(req_ctx.get("vibe", "")).upper()
+                                context_parts = []
+                                if u_query:
+                                    context_parts.append(f"QUERY: {u_query}")
+                                if u_domain:
+                                    context_parts.append(f"DOMAIN: {u_domain}")
+                                if u_intent:
+                                    context_parts.append(f"INTENT: {u_intent}")
+
+                                # [Story 112.30] JIT Hardware Hydration (only for operational/hardware domains or vibes)
+                                is_hw = (
+                                    str(u_domain).lower() in ("exp_tlm", "infra", "telemetry", "hardware")
+                                    or u_vibe in ("OPERATIONAL", "META", "FORENSIC")
+                                )
+                                if is_hw:
+                                    try:
+                                        from nodes.mlx_judge_node import get_cluster_topology_summary
+                                        context_parts.append(get_cluster_topology_summary())
+                                    except Exception:
+                                        pass
+
+                                # [Story 112.30] Forward Deep Thought's cited references (fenced from casual banter)
+                                cited_ref = req_ctx.get("cited_references")
+                                if cited_ref and not (str(u_domain).lower() in ("casual", "greeting")):
+                                    context_parts.append(f"REFERENCES:\n{cited_ref}")
+
+                                if context_parts:
+                                    context_window = "\n".join(context_parts)
+                                else:
+                                    context_window = f"request_id:{request_id}"
+
+                                async def _run_mlx_judge(
+                                    tt=turn_trace,
+                                    cw=context_window,
+                                    rid=request_id,
+                                    src=source,
+                                ):
+                                    try:
                                         result = await _mlx_judge.evaluate_256k_context(
                                             tt, cw
                                         )
                                         score = result.get("score", 0)
                                         status = result.get("status", "UNKNOWN")
+                                        prime_prompt_critique = result.get(
+                                            "prime_prompt_critique",
+                                            result.get("triage_critique", ""),
+                                        )
+                                        epistemic_critique = result.get(
+                                            "epistemic_critique",
+                                            result.get("grounding_critique", ""),
+                                        )
+                                        retort = result.get("retort", "")
                                         logger.info(
                                             f"[LAB-010][M5 JUDGE] request={rid} source={src} "
-                                            f"status={status} score={score}"
+                                            f"status={status} score={score} retort='{retort}'"
                                         )
-                                        # [FEAT-444] Write to judge_backpressure.jsonl
+
+                                        # Emit diagnostic event to Left Console (WebSocket)
+                                        try:
+                                            await self.broadcast(
+                                                {
+                                                    "type": "diagnostic",
+                                                    "brain": f"[M5 JUDGE] Score: {score} | {retort}",
+                                                    "brain_source": "M5 Judge",
+                                                    "channel": "insight",
+                                                    "score": score,
+                                                    "status": status,
+                                                    "prime_prompt_critique": prime_prompt_critique,
+                                                    "epistemic_critique": epistemic_critique,
+                                                    "request_id": rid,
+                                                }
+                                            )
+                                        except Exception as b_ex:
+                                            logger.debug(f"[M5 JUDGE] Broadcast notice failed: {b_ex}")
+
+                                        # [FEAT-444 / Story 112.10] Dual-write entry to judge_backpressure.jsonl
                                         try:
                                             entry = {
                                                 "timestamp": time.time(),
@@ -5321,6 +5391,11 @@ class FoyerRouter:
                                                 "context_window_length": len(cw),
                                                 "score": score,
                                                 "status": status,
+                                                "prime_prompt_critique": prime_prompt_critique,
+                                                "epistemic_critique": epistemic_critique,
+                                                "triage_critique": prime_prompt_critique,
+                                                "grounding_critique": epistemic_critique,
+                                                "retort": retort,
                                                 "critique": result.get("critique", ""),
                                                 "route_feedback": result.get(
                                                     "route_feedback", {}
@@ -5356,12 +5431,12 @@ class FoyerRouter:
                                             logger.warning(
                                                 f"[FEAT-444][JUDGE] Backpressure write failed (non-fatal): {write_ex}"
                                             )
-                                except Exception as je:
-                                    logger.warning(
-                                        f"[LAB-010][M5 JUDGE] Evaluation failed (non-fatal): {je}"
-                                    )
+                                    except Exception as je:
+                                        logger.warning(
+                                            f"[LAB-010][M5 JUDGE] Evaluation failed (non-fatal): {je}"
+                                        )
 
-                            asyncio.create_task(_run_mlx_judge())
+                                asyncio.create_task(_run_mlx_judge())
 
                         pending_chunks.pop(buf_key, None)
                         chunk_timestamps.pop(buf_key, None)

@@ -26,5 +26,9 @@
     "foyer_inject_timeout_sec": 10.0,
     "foyer_status_timeout_sec": 5.0
   },
+  "session": {
+    "max_history_turns": 10,
+    "idle_timeout_seconds": 900.0
+  },
   "min_chromadb_vectors": 500
 }
