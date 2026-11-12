@@ -103,8 +103,9 @@ _DOMAIN_COLLECTION_MAP: dict[str, list[str]] = {
     "lab": ["lab_journal", "lab_infrastructure"],
     "lab_infrastructure": ["lab_infrastructure"],
     "lab_journal": ["lab_journal"],
-    "career": ["career_ledger"],
-    "career_ledger": ["career_ledger"],
+    "career": ["career_ledger", "artifact_vault", "lab_journal", "discovery"],
+    "career_ledger": ["career_ledger", "artifact_vault", "lab_journal", "discovery"],
+    "work_history": ["career_ledger", "artifact_vault", "lab_journal", "discovery"],
     "artifact_vault": ["artifact_vault"],
 }
 
