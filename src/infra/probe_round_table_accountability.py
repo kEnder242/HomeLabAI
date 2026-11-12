@@ -421,6 +421,7 @@ async def run_round_table_accountability_probe(
         "sovereign_quorum": circuit.get("sovereign_quorum", False),
         "timestamp": datetime.now().isoformat(),
         "error": error_msg,
+        "topic": topic,
     }
 
     return telemetry
