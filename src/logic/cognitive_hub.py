@@ -200,6 +200,107 @@ def qpr_refine_query(query: str) -> str:
     return refined
 
 
+def extract_continuity_vector(query: str, brain_grounding: str, trailing_turn: str) -> str:
+    """[STORY 112.70] Extract the conversation continuity vector.
+
+    Returns ``THREAD_CONTINUATION`` when the current query continues the
+    prior trailing turn, and ``TOPIC_PIVOT`` when the trailing turn has
+    ended and the new query opens a distinct technical subject.
+
+    Decides from the trailing turn text and the Brain response/analysis
+    collected during Brain Stage 1 analysis.
+    """
+    norm_query = re.sub(r"\s+", " ", query.strip().lower())
+    norm_trailing = re.sub(r"\s+", " ", str(trailing_turn).strip().lower())
+    norm_brain = re.sub(r"\s+", " ", str(brain_grounding).strip().lower())
+
+    if not norm_query or not norm_trailing:
+        return "THREAD_CONTINUATION"
+
+    # Brain response may corroborate prior thread or flag new subject;
+    # explicit continuity signals override raw text comparison.
+    if "continues" in norm_brain and "pivot" not in norm_brain and "new topic" not in norm_brain:
+        return "THREAD_CONTINUATION"
+    if "pivot" in norm_brain or "new topic" in norm_brain:
+        return "TOPIC_PIVOT"
+
+    # 1) Explicit continuation signals from the query phrasing.
+    if any(
+        phrase in norm_query
+        for phrase in ("explain that", "more deeply", "more on", "further",
+                       "continue with", "about that", "following up",
+                       "on this", "in that", "that thread", "on that")
+    ):
+        return "THREAD_CONTINUATION"
+
+    # 2) Compare normalized technical terms with synonym expansion.
+    trailing_technical = _extract_technical_terms(norm_trailing)
+    expanded_query = _expand_technical_terms(query_technical=_extract_technical_terms(norm_query))
+    overlap = len(set(trailing_technical) & set(expanded_query))
+
+    # 3) Any meaningful technical overlap signals a continuation.
+    if overlap >= 1:
+        return "THREAD_CONTINUATION"
+
+    # No meaningful overlap: the new query has opened a distinct subject.
+    return "TOPIC_PIVOT"
+
+
+def _extract_technical_terms(text: str) -> list[str]:
+    """Extract core technical terms from text.
+
+    Returns list of nouns and verbs relevant to technical topics, after
+    filtering out conversational fillers and short common words.
+    """
+    fillers = {
+        "user", "hey", "hi", "hello", "yo", "narf", "tell", "show", "find",
+        "explain", "does", "do", "is", "are", "can", "could", "would", "will",
+        "what", "that", "this", "it", "its", "which", "i", "me", "you",
+        "about", "on", "in", "the", "and", "a", "an", "to", "of", "for",
+        "as", "by", "with", "at", "from", "up", "out", "over", "all",
+        "any", "some", "both", "each", "very", "also", "just", "only"
+    }
+
+    words = re.findall(r"\b(\w+)\b", text)
+    technical_terms = []
+    for w in words:
+        if w in fillers:
+            continue
+        if len(w) >= 3 and w not in {"thread", "turn", "response", "query"}:
+            technical_terms.append(w)
+    return technical_terms
+
+
+# [STORY 112.70] Technical term relationships that indicate topic continuity.
+# Maps common technical synonyms / adjacent concepts to their broader domain so
+# that queries about closely related subjects are classified as continuations.
+_TECHNICAL_RELATIONS = {
+    "ram": ["memory", "memory usage", "ram usage"],
+    "memory": ["ram", "memory usage"],
+    "cpu": ["processor", "processor usage", "cpu usage"],
+    "processor": ["cpu", "cpu usage"],
+    "gpu": ["graphics", "graphics processing", "gpu usage"],
+    "graphics": ["gpu", "gpu usage"],
+    "probe": ["round table", "accountability", "round-table"],
+    "round table": ["probe", "round-table", "accountability"],
+    "round-table": ["probe", "round table", "accountability"],
+    "firmware": ["firmware update", "firmware updates"],
+    "power": ["power management", "power profiling"],
+    "power management": ["power", "power profiling"],
+    "power profiling": ["power", "power management"],
+    "thread": ["threading", "thread use"],
+    "threading": ["thread", "thread use"],
+}
+
+
+def _expand_technical_terms(query_technical: list[str]) -> list[str]:
+    """Expand technical terms with related terms from the relationship map."""
+    expanded = list(query_technical)
+    for term in query_technical:
+        expanded.extend(_TECHNICAL_RELATIONS.get(term, []))
+    return expanded
+
+
 # [FEAT-451] Brain Persona Spec (Positive persona grounding, shares Brain's right-hemisphere personality)
 BRAIN_PERSONA_SPEC = (
     "[PERSONA]: You are Deep Thought - the Brain's pre-conscious analytical stream. "
@@ -3549,6 +3650,23 @@ class CognitiveHub:
         self._last_two_mice_brain_duration = max(
             0.001, round(time.perf_counter() - t_tm_brain_start, 3)
         )
+        # [STORY 112.70] Continuity vector extraction (Brain Stage 1)
+        prev_turn_text = ""
+        if self.round_table_memory:
+            last_entry = self.round_table_memory[-1]
+            if isinstance(last_entry, dict):
+                prev_turn_text = str(last_entry.get("text", ""))
+            else:
+                prev_turn_text = str(last_entry)
+            if prev_turn_text.startswith("User: "):
+                prev_turn_text = prev_turn_text[6:]
+
+        continuity_vector = extract_continuity_vector(
+            query, brain_grounding, prev_turn_text
+        )
+        self.turn_thought_trace["continuity_vector"] = continuity_vector
+        self.continuity_vector = continuity_vector
+        logging.info(f"[STORY 112.70] Continuity vector: {continuity_vector}")
         self.turn_thought_trace["brain"] = brain_grounding
         return brain_grounding
 
@@ -3587,6 +3705,15 @@ class CognitiveHub:
                 prompt_parts.append(f"[BRAIN_GROUNDING]:\n{effective_grounding}")
             elif rag_context:
                 prompt_parts.append(f"[RAG_CONTEXT]:\n{rag_context}")
+
+            # [STORY 112.70] Deep Thought hydration: unthread a TOPIC_PIVOT turn.
+            continuity_vector = self.turn_thought_trace.get("continuity_vector") or getattr(self, "continuity_vector", None)
+            if continuity_vector == "TOPIC_PIVOT":
+                prompt_parts.append(
+                    "[UNTANGLING_DIRECTIVE]: The user has pivoted to a distinct technical subject. "
+                    "Do not conflate entities from prior turns or claim missing logs from past discussions. "
+                    "Direct Pinky to address the new inquiry cleanly."
+                )
 
             dt_pacing = format_pacing_line("thought", interest)
             prompt_parts.append(
