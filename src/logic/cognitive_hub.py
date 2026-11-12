@@ -2419,7 +2419,7 @@ class CognitiveHub:
                 "Deliver a playful, in-character 1-sentence quip that poses the likely options, "
                 "e.g., 'Are we checking our live GPU vitals right now, or looking back at old test logs?')"
             )
-        elif t_parsed.get("vibe") == "OPERATIONAL" or t_parsed.get("domain") in ("exp_tlm", "telemetry"):
+        elif t_parsed.get("vibe") == "OPERATIONAL" and t_parsed.get("domain") in ("exp_tlm", "telemetry"):
             # [FEAT-679 / Story 108.33] Live MCP Operational Sensory Tool Hook
             self.current_interest = max(self.current_interest, 0.75)
             live_telemetry_chunk = "[TELEMETRY_UNAVAILABLE: SENSOR_TOOL_UNLINKED]"
