@@ -853,6 +853,19 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
 2. **Local-First Default & The 3-Attempt Invariant:** Stories default to local silicon (`[SWARM:LOCAL]`) for targeted code surgery and unit testing. Under `[SWARM:LOCAL]`, AGY is strictly forbidden from directly modifying the target codebase files and must focus entirely on enabling delegation as L1 orchestrator across all 3 local attempts (Attempt 1a baseline, 1b diagnostic remediation, 1c harness/anchor calibration).
 3. **The Escalation Ladder & Last-Resort Takeover:** Only after local silicon exhausts all 3 diagnostic rounds does a story promote to Cloud Swarm (`[SWARM:CLOUD]`). Direct code takeover (`[AGY:TAKEOVER]`) is strictly the final last resort, permissible only after both local and cloud swarms have executed, failed, and logged an explicit diagnostic post-mortem in the sprint report.
 4. **Anti "Across-the-Board" Review Trigger:** If 100% of the stories in a sprint phase share the identical assignment tag (e.g. all `[AGY:PRIMARY]`, all `[SWARM:LOCAL]`, or all `[SWARM:CLOUD]`), the orchestrator MUST pause during pre-flight planning to review the distribution. Confirm whether tasks were genuinely evaluated by scope or batched out of convenience. Specifically, 100% `[AGY:PRIMARY]` assignment trips **Pre-Flight Checklist Gate Item 4.1 (`BKM-082 §GATE`)** and halts sprint planning until leaf code surgeries are decomposed into `[SWARM:LOCAL]`.
+5. **Task Scope & Complexity Tiering Matrix (Assignment Guidance):**
+   To avoid misrouting complex tasks to ultra-compact local weights or burning cloud tokens on trivial edits, story assignment during sprint planning MUST follow this scope tiering matrix:
+   - **`[SWARM:LOCAL]` (Sovereign Bicameral Silicon - Kender 4090 + M5 Air):**
+     * **Scope Boundary:** Single-file or tightly bounded intra-file edits (<2,000 tokens changed), localized unit testing, or well-scoped AST leaf refactoring.
+     * **Requirements:** Deterministic 4-anchor contracts (`[ANCHOR: TARGET]`, `[ANCHOR: INTENT]`, `[ANCHOR: TEST]`, `[ANCHOR: BOUNDARY]`), pre-existing test harnesses, single-repository scope.
+     * **Prohibitions:** Multi-repo or cross-submodule synchronizations, greenfield test harness authoring, wide exploratory search across multiple directories.
+   - **`[SWARM:CLOUD]` (High-Capacity Cloud Swarm - OpenRouter Free / Sisyphus):**
+     * **Scope Boundary:** Multi-file refactorings (>3 files), cross-submodule or cross-repository implementations (e.g. schema/ledger in `Portfolio_Dev` + runtime consumers in `HomeLabAI`), greenfield test suites, and tasks requiring >10,000 tokens of architectural context.
+     * **Requirements:** Clear interface contracts and explicit target file lists.
+   - **`[SWARM:ORACLE]` (Deep Analytical Reasoning - Cohere / High-Reasoning Nodes):**
+     * **Scope Boundary:** Pre-sprint architectural evaluations, regression risk audits, and policy reconciliation without codebase mutations.
+   - **`[AGY:PRIMARY]` (Primary Conductor / Human-in-the-Loop Pair):**
+     * **Scope Boundary:** Systemd daemon lifecycle (`systemctl restart`), port management, physical silicon connectivity and live shakedown (`BKM-024`), sprint roll-up, authority certification, and emergency takeovers (`[AGY:TAKEOVER]`).
 
 #### 4. Sovereign Local Silicon Topology Invariant (KENDER -> Air)
 1. **The Sovereign Conductor & Leaf Worker Pattern:**
@@ -860,6 +873,10 @@ When an MCP server exposes many tools (e.g. ICM with 31 tools, LSP with 15 tools
    - **Conductor (Root Dispatch / Architectural Roles):** Node KENDER (Windows RTX 4090 Ollama: `hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL` / `Atlas` / `Architect`). Receives the sprint story, conducts architecture planning, and dispatches bounded leaf tasks.
    - **Leaf Worker (Surgical Patching / Execution):** Node Brain (macOS M5 Air MLX via Headroom `:8002`: `TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp` / `Sisyphus-Junior` or `Daedalus`). Receives spoon-fed 4-anchor tasks, applies atomic `clara-dna_safe_patch` edits, and is strictly forbidden from delegating further (`task: deny`).
 2. **Topology Deviation Invariant:** Any inversion or deviation from this pattern constitutes an immediate operational failure. `delegate.py` and diagnostic monitors MUST enforce this check and fail immediately upon deviation.
+3. **Local 2-Bit Attention & Prompt Noise Guardrail:**
+   - Node Brain (M5 Air) runs `TokenAI-zer--Ternary-Bonsai-2-27B-MLX` packed in 2-bit quantization (`PQ2_0` / `oQ2`). Highly quantized ternary weights have razor-thin attention entropy margins and are susceptible to catastrophic attention collapse when exposed to conflicting instructions or non-essential prompt ballast.
+   - **Prohibition of Contradictory Upstream Hooks:** Hook extensions that inject competing reminders or intrusive task nagging (e.g. `agent-usage-reminder`) MUST remain explicitly disabled (`"disabled_hooks": ["agent-usage-reminder"]` in `oh-my-openagent.json`) during local worker execution.
+   - **Strict Single-Role Focus:** Leaf workers must receive single, unambiguous objectives. Feeding uncurated diff debris, ambient hook memory bloat, or multi-role tasks to local 2-bit workers triggers repetitive loops (`evaluation_s = evaluation_s`) and constitutes an operational violation.
 
 #### 5. Handover Reflection Ingestion, Live Mandate Audit & Action ([FEAT-654] / [BKM-024])
 1. **Standardized Reflection & Live Gate Tag Capture:** Every delegation dispatch automatically extracts the subagent's `[HANDOVER REFLECTION]` and parses for machine-readable Live Gate tags:
