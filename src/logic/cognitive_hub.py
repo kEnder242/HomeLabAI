@@ -748,19 +748,18 @@ def record_negative_exemplar(
 
 
 def should_inject_career_bedrock(vibe: str, domain: str, target_domains: list = None) -> bool:
-    """[FEAT-434 / BKM-085 / SPR-110] Strict Allow/Deny Gate for Just-In-Time Career Bedrock Injection.
-    Preempts BMC/DCMI/validation career hallucinations on operational telemetry queries.
+    """[FEAT-434 / BKM-085 / VIBE-020] Inclusive-OR Trigger for Just-In-Time Career Bedrock Injection.
+    Governed by VIBE-020: Evaluates positive trigger flags without negative censorship or deny lists.
     """
     v_clean = str(vibe or "").strip().upper()
     d_clean = str(domain or "").strip().lower()
     targets = [str(t).lower() for t in (target_domains or [])]
 
-    # STRICT DENY LIST (Immediate Rejection)
-    if v_clean in ("OPERATIONAL", "CASUAL", "WYWO") or d_clean in ("exp_tlm", "telemetry", "social", "computer architecture", "infra"):
-        return False
+    # Positive Trigger Flags (VIBE-020 Inclusive-OR)
+    career_vibes = {"HISTORICAL", "CHRONICLE", "RETROSPECTIVE"}
+    career_domains = {"work_history", "career", "lab_history", "career_timeline", "career_ledger"}
 
-    # STRICT ALLOW LIST
-    if v_clean in ("HISTORICAL", "CHRONICLE", "RETROSPECTIVE") or d_clean in ("work_history", "career", "lab_history", "career_timeline"):
+    if v_clean in career_vibes or d_clean in career_domains:
         return True
 
     if any("career" in t or "history" in t for t in targets):
@@ -2441,6 +2440,12 @@ class CognitiveHub:
                 live_telemetry_chunk = "[TELEMETRY_UNAVAILABLE: SENSOR_TOOL_UNLINKED]"
 
             context = live_telemetry_chunk
+            # [VIBE-020] Additive Hydration: Stack RAG context if target_domains are present
+            if t_parsed.get("target_domains"):
+                rag_context = await self._fetch_rag_context(turn, t_parsed, request_id=request_id)
+                if rag_context:
+                    context += f"\n\n[RAG_CONTEXT]:\n{rag_context}"
+
             behavioral_guidance = (
                 "[MODE]: SENSORY_REPORT (Report live system vitals directly from the provided [LIVE_SENSORY_TELEMETRY]. "
                 "If [TELEMETRY_UNAVAILABLE: SENSOR_TOOL_UNLINKED] is present, state honestly in character that live hardware sensor access via MCP "
@@ -3014,7 +3019,7 @@ class CognitiveHub:
                         "alert Brain rather than answering on his behalf (e.g. 'Brain, Jason is asking for you!')."
                     )
 
-                # Additive Layer 2: Domain/Era Guidance & JITC Bedrock (Consuming triage directly as a data type)
+                # Additive Layer 2: Domain/Era Guidance & JITC Bedrock (VIBE-020 Inclusive-OR)
                 t_domain = str(triage_result.get("domain", "")).lower()
                 t_vibe = str(triage_result.get("vibe", "")).upper()
                 if should_inject_career_bedrock(t_vibe, t_domain, target_domains):
@@ -3024,7 +3029,7 @@ class CognitiveHub:
                         "years (2005-2025), and system era markers to ground Brain's archive search.\n"
                         f"{get_career_compass_bedrock()}"
                     )
-                elif t_domain in ("exp_tlm", "infra", "telemetry"):
+                if t_domain in ("exp_tlm", "infra", "telemetry") or t_vibe in ("OPERATIONAL",):
                     active_hyde_prompt += (
                         "\n[TELEMETRY_INDEXING_DIRECTIVE]: In 'search_terms', extract hardware telemetry signals, "
                         "registers, and silicon vitals."
