@@ -346,6 +346,9 @@
     *   VS Code's Remote-SSH processes are per-connection (`~/.vscode-server/`, `--enable-remote-auto-shutdown`) and communicate via `/tmp/code-*` sockets.
     *   `code-tunnel.service` is an active **systemd user unit** (`~/.config/systemd/user/code-tunnel.service` -> `/home/jallred/.vscode/cli/code-tunnel.service`), managing the persistent Microsoft Dev Tunnel named `z87-linux` (cluster: `usw2`) with dedicated state in `~/.vscode/cli/`. It was previously mislabeled as a phantom unit because audits checked `/etc/systemd/system/` (system scope) rather than `systemctl --user`.
     *   Auth: `KbdInteractiveAuthentication no`, no PasswordAuthentication override = key-only, root off — the reason the SSH lifeline is safe to rely on.
+4.  **`lab-attendant.service` Cgroup Fence (`[LAB-103]` / Nov 13, 2026 Verified)**:
+    *   Drop-in `/etc/systemd/system/lab-attendant.service.d/50-memory-limit.conf` enforces `MemoryHigh=3.5G` and `MemoryMax=4.0G` across the entire attendant slice (`acme_foyer_v5`, `acme_ignition_v5`, 5 resident nodes, `ggml-rpc-server`, and `llama-server`).
+    *   **Sufficiency Post-`LAB-122`:** Steady-state anonymous heap across all 10 processes is only **~`738 MiB`** (`anon`); the remaining **`~2.69 GiB`** reported in `Memory: 3.4G` is clean, instantaneously evictable `mmap` file page cache (`file`) from `-lm auto`, confirming `3.5G / 4.0G` is sufficient while actively protecting the host from any future inference leak.
 
 ### LAB-018: claude-mem Removal & Memory Manager Standardization
 **Objective**: Canonize the record from sprint-49 forensics — the root cause of the "OpenCode eats 4GB" / recurring freeze incidents was the claude-mem plugin, and the durable fix is removal + ICM standardization. Documented here as the actual reproduction commands, including the two install locations.
@@ -613,11 +616,16 @@
   2. **Enforce `--no-host` (`LLAMA_ARG_NO_HOST=1`)**: Bypasses secondary host-side fallback buffer allocation for tensors resident in GPU `DEVICE_LOCAL` VRAM.
   3. **RPC Boundary Separation**: Intel Arc B580 is isolated in `ggml-rpc-server` on loopback port 50052 (`build_vulkan/bin/ggml-rpc-server -d Vulkan0 -p 50052`), maintaining ~54MB host footprint.
   4. **Port 8088 Liveness Gate**: Launchers (`start_vllm.sh`) must verify `curl -s http://127.0.0.1:8088/v1/models` before initiating engine ignition to prevent duplicate background instance spawning.
+  5. **Tensor-Split & Single-Slot Context Governance (Nov 13, 2026 Delta)**: `moe-cuda-rpc` (`CUDA0,RPC0`, `-sm layer`) requires proportional weight ratio `-ts 10,12` (`10/22 = 45.45%` on RTX 2080 Ti, `12/22 = 54.55%` on Arc B580) with `--parallel 1` (`n_ctx: 32768` single slot). Attempting `-ts 11,11` (`50%`) triggers `cudaMalloc` OOM (`10,545 MiB` weights + `~575 MiB` desktop overhead > `11,264 MiB` physical VRAM), and `-ts 11,12` (`47.83%`) leaves unsafe compute headroom.
 * **Measured Silicon Metrics**:
   * `llama-server` Host RSS: Clamped to ~600 MB (from >10 GB thrash).
   * `llama-server` Swap: Clamped to ~127 MB (from 6,900 MB).
   * Turing CUDA Prefill: **96.4 tok/s**.
   * Autoregressive Generation: **32.5 tok/s**.
+  * **Nov 13, 2026 Live Delta (`--parallel 1`, `-ts 10,12`, `lab-attendant.service`)**:
+    * `llama-server` Host RSS: **525 MB**, Swap: **125 MB**; RTX 2080 Ti VRAM: **10,653 MiB** idle / **11,105 MiB** active.
+    * Host Swap Envelope (`5.2 GiB` total): **3.9 GiB** `zram0` (compressed desktop/background pages: `python`, `steamwebhelper`, `agy`, `litellm`, `gnome-shell`, `firefox`) + **1.4 GiB** disk swap (`sda5` + `/speedy/swapfile`), leaving **9.5 GiB** physical DDR3 available.
+    * Live HTTP Decode: **31.82 tok/s** (prose, TTFT `690.1 ms`), **34.44 tok/s** (coding, TTFT `409.7 ms`).
 
 ---
 
