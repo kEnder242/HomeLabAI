@@ -584,6 +584,27 @@ def flush_swap_residency() -> bool:
     return healthy
 
 
+def flush_host_swap() -> bool:
+    """[Story 111.22 / FEAT-416 / SPR-112.1] Flush host swap during quiet settling soak window."""
+    try:
+        # Pre-reclamation: drop clean file caches to maximize RAM headroom before swap recycling
+        subprocess.run(["sudo", "/usr/sbin/sysctl", "-w", "vm.drop_caches=3"], check=False, timeout=15)
+        # Attempt host swap recycle (swapoff -a && swapon -a)
+        res = subprocess.run(["sudo", "/usr/sbin/swapoff", "-a"], check=False, timeout=90, capture_output=True, text=True)
+        subprocess.run(["sudo", "/usr/sbin/swapon", "-a"], check=False, timeout=30)
+        if res.returncode == 0:
+            logger.info("[FEAT-416] Local host swap recycled successfully (swapoff -a && swapon -a).")
+            write_step_log("HOST_SWAP_FLUSH_OK", "Local host swap recycled successfully")
+            return True
+        else:
+            logger.warning(f"[FEAT-416] Local host swapoff returned non-zero (memory bounded): {res.stderr.strip()}")
+            write_step_log("HOST_SWAP_FLUSH_SKIPPED", f"swapoff skipped: {res.stderr.strip()}", severity="WARNING")
+            return False
+    except Exception as e:
+        logger.warning(f"[FEAT-416] Local host swap flush exception: {e}")
+        return False
+
+
 def run_mass_scan():
     """[FEAT-416 / SPR-52.0] Run note ingestion loop with strict 05:00 AM cutoff & 3.5-hour max budget.
 
@@ -1350,6 +1371,11 @@ def main():
                         f"Executing {soak_cooldown_sec}s ({soak_cooldown_sec/60:.1f}m) quiet settling & thermal soak window..."
                     )
                     write_step_log("SOAK_COOLDOWN_START", f"Sleeping {soak_cooldown_sec}s for quiet settling window")
+                    # [Story 111.22 / FEAT-416 / SPR-112.1] Flush host swap while VRAM is quiesced
+                    try:
+                        flush_host_swap()
+                    except Exception as she:
+                        logger.warning(f"[NIGHTLY STEP 3 - SOAK COOLDOWN] Host swap flush error: {she}")
                     soak_start = time.time()
                     while time.time() - soak_start < soak_cooldown_sec:
                         time.sleep(min(60, soak_cooldown_sec - (time.time() - soak_start)))
@@ -1535,22 +1561,18 @@ def main():
         )
 
         # =========================================================================
-        # STEP 7: BACKGROUND NOTE INGESTION & MASS SCAN MOP-UP [SPR-52.0 / FEAT-416]
+        # STEP 7: HISTORICAL JOURNAL BRIDGE (NIBBLER DISABLED AT NIGHT) [SPR-112.1]
         # =========================================================================
-        # TIME BUDGET: UNBOUNDED (1 to 4+ hours / mops up the remainder of the night)
-        # WHY: mass_scan.py processes the massive archive of historical notes and journal entries.
-        # Placed at the very end so that it NEVER starves earlier phases.
+        # [SPR-112.1] Nibbler & Mass Scan transitioned to daytime execution (daily batch tasks).
+        # Disabled in nightly maintenance to eliminate VRAM contention and morning memory paging stalls.
         logger.info(
-            "[NIGHTLY STEP 7 - TAIL MOP-UP] Initiating Historical Journal Bridge & Mass Scan Mop-up Pass..."
+            "[NIGHTLY STEP 7 - TAIL MOP-UP] Initiating Historical Journal Bridge (Nibbler/Mass Scan disabled for nightly maintenance)..."
         )
         try:
             run_journal_to_dna_bridge()
         except Exception as jbe:
             logger.error(f"[NIGHTLY STEP 7] Historical journal bridge error: {jbe}")
-        try:
-            run_mass_scan()
-        except Exception as mse:
-            logger.error(f"[NIGHTLY STEP 7] Mass scan mop-up error: {mse}")
+        # Note: run_mass_scan() excised per SPR-112.1 operator directive.
 
         logger.info(f"=== NIGHTLY FORGE ORCHESTRATION COMPLETE (Status: {overall_status}) ===")
         write_step_log(
