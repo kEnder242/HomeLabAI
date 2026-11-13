@@ -128,36 +128,43 @@ class TestFilterCandidateContext:
         distances = [c["distance"] for c in result]
         assert distances == [0.10, 0.30, 0.40]
 
-    def test_suppresses_career_ledger_for_meta_vibe(self) -> None:
-        """career_ledger candidates are removed for META vibe."""
+    def test_retains_career_ledger_for_meta_vibe_under_vibe_020(self) -> None:
+        """[VIBE-020]: career_ledger candidates are retained for META vibe without negative censorship."""
         candidates = [
             self._make_candidate("career_ledger", 0.10),
             self._make_candidate("feature_dna", 0.20),
         ]
         result = filter_candidate_context(candidates, "META", "general")
-        assert len(result) == 1
-        assert result[0]["collection"] == "feature_dna"
+        assert len(result) == 2
+        collections = [c["collection"] for c in result]
+        assert "career_ledger" in collections
+        assert "feature_dna" in collections
 
-    def test_suppresses_behavioral_dna_for_meta_vibe(self) -> None:
-        """behavioral_dna candidates are removed for META vibe."""
+    def test_retains_behavioral_dna_for_meta_vibe_under_vibe_020(self) -> None:
+        """[VIBE-020]: behavioral_dna candidates are retained for META vibe without negative censorship."""
         candidates = [
             self._make_candidate("behavioral_dna", 0.10),
             self._make_candidate("feature_dna", 0.20),
         ]
         result = filter_candidate_context(candidates, "META", "general")
-        assert len(result) == 1
-        assert result[0]["collection"] == "feature_dna"
+        assert len(result) == 2
+        collections = [c["collection"] for c in result]
+        assert "behavioral_dna" in collections
+        assert "feature_dna" in collections
 
-    def test_suppresses_for_lab_internal_domain(self) -> None:
-        """career_ledger and behavioral_dna are suppressed for lab_internal."""
+    def test_retains_all_for_lab_internal_domain_under_vibe_020(self) -> None:
+        """[VIBE-020]: career_ledger and behavioral_dna are retained for lab_internal."""
         candidates = [
             self._make_candidate("career_ledger", 0.10),
             self._make_candidate("behavioral_dna", 0.15),
             self._make_candidate("feature_dna", 0.20),
         ]
         result = filter_candidate_context(candidates, "general", "lab_internal")
-        assert len(result) == 1
-        assert result[0]["collection"] == "feature_dna"
+        assert len(result) == 3
+        collections = [c["collection"] for c in result]
+        assert "career_ledger" in collections
+        assert "behavioral_dna" in collections
+        assert "feature_dna" in collections
 
     def test_no_suppression_for_general_context(self) -> None:
         """All collections are kept for non-META, non-lab_internal."""
@@ -178,14 +185,17 @@ class TestFilterCandidateContext:
         )
         assert result == []
 
-    def test_all_suppressed_returns_empty(self) -> None:
-        """If every candidate is from suppressed collections, result is empty."""
+    def test_vibe_020_no_suppression_returns_candidates(self) -> None:
+        """[VIBE-020]: Candidates under max_distance are retained even in META vibe without negative censorship."""
         candidates = [
             self._make_candidate("career_ledger", 0.10),
             self._make_candidate("behavioral_dna", 0.20),
         ]
         result = filter_candidate_context(candidates, "META", "general")
-        assert result == []
+        assert len(result) == 2
+        collections = [c["collection"] for c in result]
+        assert "career_ledger" in collections
+        assert "behavioral_dna" in collections
 
     def test_missing_distance_defaults_to_1(self) -> None:
         """Candidates missing 'distance' key default to 1.0 (triggers gate)."""

@@ -39,16 +39,16 @@ _DEFAULT_PRIORITY = [
     "artifact_vault",
 ]
 
-# [FEAT-469] Collections strictly suppressed for live operational contexts.
-_SUPPRESSED_FOR_LIVE_OPS = {"career_ledger", "behavioral_dna"}
+# [FEAT-469 / VIBE-020] Negative collection suppression abolished per VIBE-020 (Zero-Censorship Law).
+# Deprecated set preserved as empty set for backwards compatibility.
+_SUPPRESSED_FOR_LIVE_OPS: set[str] = set()
 
 
 def get_collection_priorities(vibe: str, domain: str) -> list[str]:
     """Return ordered collection priority list for the given vibe/domain pair.
 
     For ``vibe="META"`` or ``domain="lab_internal"``, returns live-ops
-    collections that ground the model in real lab state while suppressing
-    career_ledger and behavioral_dna.
+    collections that ground the model in real lab state.
 
     For ``domain="lab_history"``, returns historical collections only.
 
@@ -76,12 +76,13 @@ def filter_candidate_context(
 ) -> list[dict[str, Any]]:
     """Filter and rank retrieved candidates, enforcing the Zero Context rule.
 
+    [VIBE-020]: Governed by the Zero-Censorship Law. Negative collection drop lists
+    are abolished. If candidates pass the distance threshold, all collections are
+    retained additively without post-retrieval censorship.
+
     If the top candidate's distance exceeds ``max_distance``, the system
     returns an empty list – zero context is preferable to unreliable context
     that could hallucinate false information.
-
-    When vibe is META or domain is lab_internal, candidates from suppressed
-    collections (career_ledger, behavioral_dna) are filtered out.
 
     Candidates are returned sorted by ascending distance (best match first).
     """
@@ -96,14 +97,7 @@ def filter_candidate_context(
     if top_distance > max_distance:
         return []
 
-    # [FEAT-469] Live ops suppression
-    if vibe.upper() == "META" or domain == "lab_internal":
-        sorted_candidates = [
-            c
-            for c in sorted_candidates
-            if c.get("collection") not in _SUPPRESSED_FOR_LIVE_OPS
-        ]
-
+    # [VIBE-020] Positive hydration: no negative drop lists. Retain all candidates under threshold.
     return sorted_candidates
 
 

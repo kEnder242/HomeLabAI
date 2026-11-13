@@ -151,12 +151,12 @@ class TestMetaGroundingAndNegativeRAG:
         filtered = filter_candidate_context(
             candidates, vibe="META", domain="lab_internal", max_distance=0.50
         )
-        # career_ledger is suppressed in META vibe, feature_dna and lab_infrastructure survive
-        assert len(filtered) == 2
+        # [VIBE-020]: career_ledger is no longer censored in META vibe; all candidates under threshold survive
+        assert len(filtered) == 3
         collections = [c["collection"] for c in filtered]
         assert "feature_dna" in collections
         assert "lab_infrastructure" in collections
-        assert "career_ledger" not in collections
+        assert "career_ledger" in collections
 
     def test_hyde_vector_template_scrubbing(self):
         raw_vector = "[VALIDATION]: <silicon_term_or_pcie_ras> | [STRATEGY]: <focal_goal_or_leadership_impact> | [SRE]: <bkm_scar_or_shell_command>"
