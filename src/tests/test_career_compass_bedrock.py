@@ -51,6 +51,21 @@ def test_should_inject_career_bedrock_allow_list():
     assert should_inject_career_bedrock("SOCRATIC", "work_history", target_domains=["career_ledger"])
 
 
+def test_should_inject_career_bedrock_vibe_020_inclusive_or():
+    """[VIBE-020] Verify that orthogonal vibes and domains trigger inclusively without negative censorship."""
+    # Casual tone inquiring about career topic -> should NOT be censored
+    assert should_inject_career_bedrock("CASUAL", "career")
+    assert should_inject_career_bedrock("CASUAL", "work_history")
+
+    # Operational stance referencing work history -> should NOT be censored
+    assert should_inject_career_bedrock("OPERATIONAL", "work_history")
+    assert should_inject_career_bedrock("OPERATIONAL", "career_ledger")
+
+    # Historical vibe querying infrastructure or architecture -> should NOT be censored
+    assert should_inject_career_bedrock("HISTORICAL", "infra")
+    assert should_inject_career_bedrock("HISTORICAL", "computer architecture")
+
+
 def test_build_two_mice_stage_prompt_conditional():
     """Verify build_two_mice_stage_prompt includes bedrock only when provided."""
     bedrock = get_career_compass_bedrock()

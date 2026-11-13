@@ -2146,4 +2146,46 @@ A **Shakedown** is an immediate, full-fidelity execution of the exact modified s
 3. **Stderr Transparency in Watchdogs & Harnesses**: Subprocess harnesses and watchdog monitors MUST capture and log `res.stderr` when exit codes are non-zero. Suppressing stderr or returning generic "failed or timed out" strings is strictly forbidden.
 4. **Physical Output Inspection**: Verify the physical output artifact (e.g. `daily_accountability_digest.json`, stdout JSON) to confirm real data was generated rather than an unhandled fallback or empty stub.
 
+---
+
+## VIBE-020: Orthogonal Triage & Additive Hydration (The "Positive Flags, Zero-Censorship" Law)
+**Feature Anchor:** `[FEAT-434]` / `[FEAT-469]` / `[FEAT-489]` / `[FEAT-533]` / `[FEAT-534]` / `[FEAT-540]` / `[FEAT-660]` / `[FEAT-671]`  
+**Related BKMs & VIBEs:** `[BKM-083]` (5-Stage Cognitive Hub) / `[BKM-085]` (JIT Grounding) / `[BKM-092]` (Temporal Provenance) / `[VIBE-006]` (Neural Resonance) / `[VIBE-019]` (Temporal Frame Disentanglement)  
+**Colloquial Alias:** "The Positive Flags Law", "Inclusive-OR Hydration", "Orthogonal Triage Mandate"  
+**Tags:** `#vibe_020`, `#inclusive_or`, `#additive_hydration`, `#zero_censorship`, `#orthogonal_triage`  
+**Domain:** Semantic Triage, Context Hydration, RAG Architecture, Headroom Governance  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Orthogonality Axiom
+1. **Independent Coordinates**: `Vibe` (conversational mode, stance, tone: e.g. `HISTORICAL`, `OPERATIONAL`, `TECHNICAL`, `CASUAL`) and `Domain` (subject matter topic: e.g. `work_history`, `exp_tlm`, `dna`, `infra`) are strictly **orthogonal dimensions** in cognitive space.
+2. **Zero Artificial Blending**: Vibes and domains do not compete, collide, or require complex mathematical blending or priority override matrices.
+3. **Non-Interference**: A turn's conversational stance (`vibe`) must never negate or suppress its subject matter (`domain`), and vice versa. An informal tone (`vibe: CASUAL`) inquiring about past projects (`domain: work_history`) is a valid coordinate pair that must receive full grounding.
+
+### 2. The "Positive Flags, Zero-Censorship" Law
+1. **Inclusive-OR Triggering**: Context hydration operates exclusively via **positive inclusive flags** $(\lor)$:
+   $$\text{Hydrate}(Block) \iff \text{Match}_{\text{vibe}}(Block) \lor \text{Match}_{\text{domain}}(Block) \lor \text{Match}_{\text{target}}(Block)$$
+2. **Prohibition of Negative Deny Lists**: Hardcoded deny lists (e.g. `if v in ("OPERATIONAL", "CASUAL"): return False` or `_SUPPRESSED_FOR_LIVE_OPS`) are banned. If a context is irrelevant, it naturally remains un-triggered because neither its vibe nor domain flag fired; negative drop lists create artificial context starvation.
+3. **Prohibition of `elif` Mutual Exclusion**: Sequential context blocks must never be chained via `if ... elif ... else`. An `elif` falsely treats distinct knowledge domains as mutually exclusive (e.g. dropping live telemetry when career bedrock is present). Each hydration block is evaluated as an independent, sequential `if`.
+
+### 3. Classification-Bounded Token Budgeting
+1. **Built-In Cardinality Limits**: Token protection is guaranteed upstream by the triage schema itself:
+   - `vibe`: Scalar `enum` (exactly 1 active vibe).
+   - `domain`: Scalar `enum` (exactly 1 active primary domain).
+2. **The $1 + 1$ Upper Bound**: Because triage cardinality is strictly $(1 \text{ vibe}, 1 \text{ domain})$, the maximum number of top-level directive blocks that can ever fire simultaneously is **exactly two** (at most 1 from vibe, at most 1 from domain).
+3. **Headroom Invariant**: Runaway prompt stacking is structurally impossible under this schema. The natural stacking payload is capped at ~500 tokens of directive overhead, preserving local silicon headroom (M5 Air 2-bit MLX) without requiring complex runtime shedding heuristics.
+
+### 4. Additive Stacking & Semantic Demarcation Invariants
+1. **Additive Prompt Stacking**: When both the vibe flag and domain flag fire, their payloads are additive—they physically stack into the turn's prompt context.
+2. **Strict Section Tagging**: To prevent cross-domain or temporal hallucination when disparate contexts stack (e.g. 2012 BMC validation notes stacking with 2026 RTX 4090 GPU vitals), each block MUST be encapsulated in explicit container tags:
+   ```text
+   [HISTORICAL_CAREER_BEDROCK]
+   ...
+   [/HISTORICAL_CAREER_BEDROCK]
+
+   [CURRENT_LAB_TELEMETRY]
+   ...
+   [/CURRENT_LAB_TELEMETRY]
+   ```
+3. **Lean Block Quotas**: Each individual hydration source must maintain a lean byte quota (~200–350 tokens) so that compound stacks never crowd out the model's primary reasoning space.
+
 
