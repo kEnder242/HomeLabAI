@@ -295,7 +295,7 @@ start_moe_cuda_rpc() {
         --reasoning-budget 0 \
         --port "$PORT" \
         --host "0.0.0.0" \
-        --parallel 2 \
+        --parallel 1 \
         --alias "Qwen3.6-35B-A3B,local,unified-base" > "$ENGINE_LOG" 2>&1 &
     local engine_pid=$!
     echo "$engine_pid" > "$ENGINE_PID_FILE"
@@ -325,7 +325,7 @@ start_moe_dual() {
         --reasoning-budget 0 \
         --port "$PORT" \
         --host "0.0.0.0" \
-        --parallel 2 \
+        --parallel 1 \
         --alias "Qwen3.6-35B-A3B,local,unified-base" > "$ENGINE_LOG" 2>&1 &
     local engine_pid=$!
     echo "$engine_pid" > "$ENGINE_PID_FILE"
