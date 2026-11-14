@@ -28,20 +28,26 @@ TOOL_LOG_PATH = os.path.join(LAB_DIR, "tool_log.md")
 
 
 def get_unified_base_model():
-    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the model_manifest.local-unified-base pointer."""
+    """[FEAT-030 / LAB-003] Read config/infrastructure.json and resolve the active unified base model."""
     try:
         if os.path.exists(INFRA_CONFIG):
             with open(INFRA_CONFIG, "r") as f:
                 data = json.load(f)
+                eng = data.get("inference_engine", {})
+                mode = eng.get("mode", "moe-cuda-rpc")
+                if mode != "vllm":
+                    mode_model = eng.get(mode.replace("-", "_"), {}).get("model")
+                    if mode_model:
+                        return mode_model
                 manifest = data.get("model_manifest", {})
                 unified_key = manifest.get(
                     "local-unified-base",
-                    manifest.get("unified-base", "llama-3.2-3b-awq"),
+                    manifest.get("unified-base", "Qwen3.6-35B-A3B"),
                 )
                 return manifest.get(unified_key, unified_key)
     except Exception:
         pass
-    return "llama-3.2-3b-awq"
+    return "Qwen3.6-35B-A3B"
 
 
 # [FEAT-660] Universal Bicameral Context Fencing (Anti-Unrolling Invariant)
