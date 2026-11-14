@@ -13,6 +13,31 @@ class SensoryMode(Enum):
 
 # [Task 17.3] Single Source of Versioning
 LAB_VERSION = "5.0.0-foyer"
+_DEFAULT_INFRA_PATH = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+
+
+def get_active_model_name(infra_path: str = _DEFAULT_INFRA_PATH) -> str:
+    """Resolve the active inference model display name from infrastructure.json."""
+    try:
+        if os.path.exists(infra_path):
+            with open(infra_path, "r") as f:
+                data = json.load(f)
+            eng = data.get("inference_engine", {})
+            mode = eng.get("mode", "moe-cuda-rpc")
+            mode_key = mode.replace("-", "_")
+            model_path = eng.get(mode_key, {}).get("model", "")
+            if model_path:
+                base = os.path.basename(model_path).replace(".gguf", "")
+                for suffix in ("-UD-Q4_K_M", "-Q8_0", "-Q4_K_M"):
+                    base = base.removesuffix(suffix)
+                return base
+            manifest = data.get("model_manifest", {})
+            unified = manifest.get("local-unified-base", manifest.get("unified-base"))
+            if unified:
+                return unified
+    except Exception:
+        pass
+    return "Qwen3.6-35B-A3B"
 
 # [Task 4.1] V5 Common: Unified types for the Modular Suite
 
@@ -132,7 +157,7 @@ class LabStatus:
             "active_domain": self.active_domain,
             "vitals": {
                 "mode": self.state,
-                "model": "Llama-3.2-3B-AWQ" if self.engine_up else "-",
+                "model": get_active_model_name() if self.engine_up else "-",
                 "vram": f"{vram_pct:.1f}%",
                 "ram": f"{self.ram_pct:.1f}%",
                 "intercom": "ONLINE" if self.vocal else "OFFLINE",

@@ -418,7 +418,7 @@ def get_host_vitals() -> dict[str, Any]:
             "core_count": os.cpu_count() or 4,
         },
         "model_residency": {
-            "active_model": "llama-3.2-3b-awq",
+            "active_model": __import__("v5.common.types", fromlist=["get_active_model_name"]).get_active_model_name(),
             "active_lora": None,
             "foyer_state": "OPERATIONAL",
         },
