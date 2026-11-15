@@ -4498,6 +4498,15 @@ class FoyerRouter:
             return web.json_response({"error": str(e)}, status=500)
 
     async def handle_rest_inject(self, request):
+        reap_stale_maintenance_lock()
+        if os.path.exists(_MAINTENANCE_LOCK_PATH):
+            return web.json_response(
+                {
+                    "status": "MAINTENANCE",
+                    "message": "Foyer quiesced during active maintenance.lock",
+                },
+                status=503,
+            )
         data = await request.json()
         query = data.get("query")
         if query:
