@@ -664,3 +664,22 @@
   * **Engine Warmup Soak**: `engine_warmup_timeout_sec` (90s) in `src/nodes/loader.py` (`[FEAT-462]`) governs the anchor warmup retry loop, preventing false crash flags during nightly engine restarts.
   * **Foyer Protocol Probes**: `foyer_greeting_probe_timeout_sec` (5s), `foyer_inject_timeout_sec` (10s), `foyer_status_timeout_sec` (5s).
 * **Anti-Duplication Standard**: Supporting feature documents and sprint files must point directly to `lab_accountability_thresholds.json:timeouts` and this section rather than duplicating narrative timeout blocks.
+
+
+---
+
+## LAB-124: Externalized Known-Passwords Secret Store & Sanitization Code Map ([BKM-061], [LOOP-006])
+
+* **Objective**: Keep all literal leaked/historical credentials strictly outside git repositories and `field_notes/data/` (which syncs to `www_deploy`), while wiring deterministic backup scrubbing and escape tripwire auditing across the lab.
+* **Date**: November 16, 2026.
+* **External Secret Files (Untracked, `chmod 0600`)**:
+  * **Known Passwords Store**: `/home/jallred/.config/homelab/known_passwords.json` (JSON `{"known_passwords": [...]}` sorted longest-first; overridable via `HOMELAB_KNOWN_PASSWORDS_FILE`).
+  * **Keep Sync App Credentials**: `/home/jallred/.config/homelab/keep_sync.json` (JSON `{"password": "...", "password_spaces": "..."}`; overridable via `KEEP_APP_PASSWORD` / `KEEP_APP_PASSWORD_SPACES`).
+* **Known Code Areas & Consumers**:
+  * [`Portfolio_Dev/field_notes/scrub_all_passwords.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/scrub_all_passwords.py) — `_load_known_passwords()` loads `KNOWN_PASSWORDS` from `known_passwords.json`; `sanitize_with_tripwire()` combines `KNOWN_PASSWORDS` with syntactic rules (`curl_userpass`, `url_basic_auth`, `setx_export`, `jfrog_api_key`, `cli_option_secret`), returning `(sanitized_text, escaped, matched_rules)`.
+  * [`Portfolio_Dev/field_notes/nibble_v2.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/nibble_v2.py) — Primary LLM layer uses `P5_Hybrid_Semantic_Syntactic`; calls `sanitize_with_tripwire()` on `summary`, `evidence`, and `trigger_context`, logging any backup catch (`escaped=True`) to `Portfolio_Dev/field_notes/data/sanitization_escape_ledger.jsonl` (`[LOOP-006]`).
+  * [`Portfolio_Dev/field_notes/sweep_p5_escapes.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/sweep_p5_escapes.py) — Read-only `P5` + `sanitize_with_tripwire()` batch scanner over `20*.json` and `public_benchmarks.json`.
+  * [`Portfolio_Dev/field_notes/test_nibbler_escape_tripwire.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/test_nibbler_escape_tripwire.py) — Escape-canary verification suite for `sanitize_with_tripwire()` and watchdog tripwire detection.
+  * [`Portfolio_Dev/field_notes/export_public_benchmarks.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/export_public_benchmarks.py) — Calls `sanitize_text()` when exporting `public_benchmarks.json`.
+  * [`HomeLabAI/src/infra/standalone_accountability_watchdog.py`](file:///home/jallred/Dev_Lab/HomeLabAI/src/infra/standalone_accountability_watchdog.py) — `check_sanitization_tripwire()` audits `sanitization_escape_ledger.jsonl` over the last 24h and flags `DEGRADED` on escapes.
+  * [`HomeLabAI/src/debug/keep_sync.py`](file:///home/jallred/Dev_Lab/HomeLabAI/src/debug/keep_sync.py) — Reads Google Keep app password from `keep_sync.json` / environment variables.
