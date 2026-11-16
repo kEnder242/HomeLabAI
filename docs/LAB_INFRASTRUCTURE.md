@@ -683,3 +683,18 @@
   * [`Portfolio_Dev/field_notes/export_public_benchmarks.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/export_public_benchmarks.py) — Calls `sanitize_text()` when exporting `public_benchmarks.json`.
   * [`HomeLabAI/src/infra/standalone_accountability_watchdog.py`](file:///home/jallred/Dev_Lab/HomeLabAI/src/infra/standalone_accountability_watchdog.py) — `check_sanitization_tripwire()` audits `sanitization_escape_ledger.jsonl` over the last 24h and flags `DEGRADED` on escapes.
   * [`HomeLabAI/src/debug/keep_sync.py`](file:///home/jallred/Dev_Lab/HomeLabAI/src/debug/keep_sync.py) — Reads Google Keep app password from `keep_sync.json` / environment variables.
+
+## LAB-125: Externalized Private Feedback & Coaching Sentinels ([BKM-061], [VIBE-008], [LOOP-006])
+
+* **Objective**: Maintain complete source-code and git-history privacy by externalizing personal managerial critique, developmental feedback, and private coaching phrases outside all repositories and public lakehouse files.
+* **Date**: November 16, 2026.
+* **External Sentinel Store (Untracked, `chmod 0600`)**:
+  * **Focal Negative Sentinels**: `/home/jallred/.config/homelab/focal_negative_anchors.json` (JSON `{"negative_patterns": [...]}`).
+* **Architecture & Invariant Rules**:
+  * **Git-Tracked Code & Docs Blindness**: Repository source files (`nibble_v2.py`, `build_focal_draft_mapping.py`, `FeatureTracker.md`, sprint plans) MUST contain ONLY generic structural headers (`AREAS FOR IMPROVEMENT`, `Results Coaching`, `Behaviors Coaching`, `Rating: ...`). Verbatim employee feedback quotes are strictly forbidden in git history.
+  * **Synthetic Canaries Only in Tests**: All unit and regression suites (`test_nibbler_escape_tripwire.py`) must use synthetic canary personas (`CanaryUser`) rather than actual personnel critique.
+  * **Runtime Dynamic Ingestion**: Local processing pipelines dynamically ingest `~/.config/homelab/focal_negative_anchors.json` at runtime, merging private sentinels with generic structural rules.
+* **Known Code Areas & Consumers**:
+  * [`Portfolio_Dev/field_notes/nibble_v2.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/nibble_v2.py) — `_get_focal_coaching_rules()` dynamically loads external negative patterns; `audit_focal_coaching_tripwire()` executes post-LLM drop/suture evaluation under `[VIBE-008]`.
+  * [`Portfolio_Dev/field_notes/build_focal_draft_mapping.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/build_focal_draft_mapping.py) — `load_negative_patterns()` combines generic headers with external sentinels to construct `focal_draft_mapping.json`.
+  * [`Portfolio_Dev/field_notes/test_nibbler_escape_tripwire.py`](file:///home/jallred/Dev_Lab/Portfolio_Dev/field_notes/test_nibbler_escape_tripwire.py) — `run_focal_coaching_tripwire_test()` uses synthetic canary records to certify tripwire behavior without privacy leakage.
