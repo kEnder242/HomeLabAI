@@ -3923,17 +3923,26 @@ class FoyerRouter:
             data = await request.json()
             # Load default steps from infrastructure.json if not explicitly provided
             cfg_steps = 150
+            lora_enabled = True
             try:
                 config_path = os.path.expanduser(
                     "~/Dev_Lab/HomeLabAI/config/infrastructure.json"
                 )
                 if os.path.exists(config_path):
                     with open(config_path, "r") as f:
-                        cfg_steps = (
-                            json.load(f).get("forge", {}).get("default_steps", 150)
-                        )
+                        forge_cfg = json.load(f).get("forge", {})
+                        cfg_steps = forge_cfg.get("default_steps", 150)
+                        lora_enabled = forge_cfg.get("lora_training_enabled", True)
             except Exception:
                 pass
+            if not lora_enabled:
+                logger.info("[FORGE] /train skipped: lora_training_enabled=False (MOTHBALLED).")
+                return web.json_response(
+                    {"status": "FORGE_MOTHBALLED", "message": "LoRA forge mothballed"},
+                    status=200,
+                )
+
+            adapter_name = data.get("adapter")
             steps = data.get("steps", cfg_steps)
 
             if not adapter_name:
@@ -4061,25 +4070,36 @@ class FoyerRouter:
                 if lab_node:
                     asyncio.create_task(lab_node.call_tool("build_semantic_map"))
             elif task == "forge":
-                # [FEAT-217] Sequenced Batch Forge - bypass MCP catch-22
-                async def _run_batch_forge():
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            payload = {
-                                "adapter": "cli_voice_v1,shadow_brain_v2,lab_history_v1",
-                                "steps": 60,
-                            }
-                            url = f"http://127.0.0.1:{PORT}/train"
-                            async with session.post(
-                                url, json=payload, timeout=3600
-                            ) as r:
-                                logger.info(
-                                    f"[TRIGGER] Sequenced Batch Forge completed. Status: {r.status}"
-                                )
-                    except Exception as e:
-                        logger.error(f"[TRIGGER] Sequenced Batch Forge failed: {e}")
+                # [FEAT-217 / K2] Short-circuit cleanly when LoRA training is mothballed
+                lora_enabled = True
+                try:
+                    config_path = os.path.expanduser("~/Dev_Lab/HomeLabAI/config/infrastructure.json")
+                    if os.path.exists(config_path):
+                        with open(config_path, "r") as f:
+                            lora_enabled = json.load(f).get("forge", {}).get("lora_training_enabled", True)
+                except Exception:
+                    pass
+                if not lora_enabled:
+                    logger.info("[TRIGGER] Sequenced Batch Forge skipped: MOTHBALLED (lora_training_enabled=False).")
+                else:
+                    async def _run_batch_forge():
+                        try:
+                            async with aiohttp.ClientSession() as session:
+                                payload = {
+                                    "adapter": "cli_voice_v1,shadow_brain_v2,lab_history_v1",
+                                    "steps": 60,
+                                }
+                                url = f"http://127.0.0.1:{PORT}/train"
+                                async with session.post(
+                                    url, json=payload, timeout=3600
+                                ) as r:
+                                    logger.info(
+                                        f"[TRIGGER] Sequenced Batch Forge completed. Status: {r.status}"
+                                    )
+                        except Exception as e:
+                            logger.error(f"[TRIGGER] Sequenced Batch Forge failed: {e}")
 
-                asyncio.create_task(_run_batch_forge())
+                    asyncio.create_task(_run_batch_forge())
             elif task == "eval":
                 # [FEAT-T21.3] BKM-032: Background benchmark eval run
                 tag = data.get("tag", "baseline")
@@ -5333,10 +5353,18 @@ class FoyerRouter:
                                     except Exception:
                                         pass
 
-                                # [Story 112.30] Forward Deep Thought's cited references (fenced from casual banter)
-                                cited_ref = req_ctx.get("cited_references")
-                                if cited_ref and not (str(u_domain).lower() in ("casual", "greeting")):
-                                    context_parts.append(f"REFERENCES:\n{cited_ref}")
+                                # [Story 112.30 / K1] Forward Brain's raw KEEP chunks + Deep Thought synthesis (fenced from casual)
+                                is_non_casual = not (str(u_domain).lower() in ("casual", "greeting"))
+                                if is_non_casual:
+                                    last_artifacts = getattr(getattr(self, "cognitive", None), "last_turn_artifacts", {}) or {}
+                                    raw_bedrock = ""
+                                    if last_artifacts.get("request_id") == request_id:
+                                        raw_bedrock = last_artifacts.get("bedrock_payload", "")
+                                    if raw_bedrock:
+                                        context_parts.append(f"RAW_KEEP_CHUNKS:\n{raw_bedrock[:6000]}")
+                                    cited_ref = req_ctx.get("cited_references")
+                                    if cited_ref:
+                                        context_parts.append(f"REFERENCES:\n{cited_ref}")
 
                                 if context_parts:
                                     context_window = "\n".join(context_parts)
@@ -5348,10 +5376,11 @@ class FoyerRouter:
                                     cw=context_window,
                                     rid=request_id,
                                     src=source,
+                                    j_meta={"vibe": u_vibe, "domain": u_domain},
                                 ):
                                     try:
                                         result = await _mlx_judge.evaluate_256k_context(
-                                            tt, cw
+                                            tt, cw, metadata=j_meta
                                         )
                                         score = result.get("score", 0)
                                         status = result.get("status", "UNKNOWN")
@@ -5402,8 +5431,6 @@ class FoyerRouter:
                                                 "status": status,
                                                 "prime_prompt_critique": prime_prompt_critique,
                                                 "epistemic_critique": epistemic_critique,
-                                                "triage_critique": prime_prompt_critique,
-                                                "grounding_critique": epistemic_critique,
                                                 "retort": retort,
                                                 "critique": result.get("critique", ""),
                                                 "route_feedback": result.get(
@@ -5418,9 +5445,6 @@ class FoyerRouter:
                                                 ),
                                                 "factual_drift_detected": result.get(
                                                     "factual_drift_detected", None
-                                                ),
-                                                "style_critique": result.get(
-                                                    "style_critique", ""
                                                 ),
                                             }
                                             os.makedirs(

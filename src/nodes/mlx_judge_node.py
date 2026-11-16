@@ -141,6 +141,21 @@ class MLXAsyncJudge:
         turn_lower = turn_trace.lower()
         if any(trigger in turn_lower for trigger in self.REFUSAL_TRIGGERS):
             return {"refusal": True, "reason": "PREMISE_MISMATCH"}
+
+        meta = metadata or {}
+        vibe = str(meta.get("vibe", "")).upper()
+        domain = str(meta.get("domain", "")).lower()
+        vibe_guidance = ""
+        if vibe in ("OPERATIONAL", "FORENSIC", "META") or domain in ("exp_tlm", "infra", "telemetry", "hardware"):
+            vibe_guidance = (
+                "3. Causal & Hardware Fidelity: Compare claims against RAW_KEEP_CHUNKS (if provided), not just Deep Thought's synthesis. "
+                "Penalize unstated causal leaps or conflated dates/metrics.\n"
+            )
+        elif vibe == "WYWO" or "standup" in domain:
+            vibe_guidance = "3. WYWO Clarity: Verify overnight status/briefing points match recorded logs without inventing live failures.\n"
+        elif domain in ("casual", "greeting"):
+            vibe_guidance = "3. Conversational Brevity: Reward natural, concise rapport without forcing unnecessary technical citations.\n"
+
         payload = {
             "model": self.model_name,
             "messages": [
@@ -150,11 +165,13 @@ class MLXAsyncJudge:
                         "You are Sovereign Lab Sanity Judge. Evaluate the turn trace for end-to-end responsiveness and factual integrity.\n\n"
                         "EVALUATION CRITERIA:\n"
                         "1. Prime Prompt Responsiveness: Does the response directly and substantively address what the user commanded or asked? Verify that Pinky synthesizes and addresses the user's inquiry rather than merely parroting Deep Thought's raw reasoning.\n"
-                        "2. Epistemic Integrity & Grounding: Does the response maintain fidelity to available evidence? If records are cited in the context or references, are they cited accurately? If archival records are absent, incomplete, or marked as no matches, reward the response for honestly acknowledging evidence boundaries rather than penalizing it as an omission or hallucination.\n\n"
+                        "2. Epistemic Integrity & Grounding: Does the response maintain fidelity to RAW_KEEP_CHUNKS and REFERENCES? If archival records are absent or incomplete, reward honest acknowledgment of evidence boundaries.\n"
+                        f"{vibe_guidance}\n"
                         "Emit strictly valid JSON matching this schema:\n"
                         "{\n"
                         '  "prime_prompt_critique": "string — assessment of responsiveness and direct answers without parroting",\n'
-                        '  "epistemic_critique": "string — factual fidelity and honest acknowledgment of evidence limits",\n'
+                        '  "epistemic_critique": "string — factual fidelity against RAW_KEEP_CHUNKS/REFERENCES and evidence limits",\n'
+                        '  "factual_drift_detected": false,\n'
                         '  "score": 0.0 to 1.0 — floating point score reflecting overall coherence and truthfulness,\n'
                         '  "retort": "string — concise verdict"\n'
                         "}"
@@ -234,8 +251,7 @@ class MLXAsyncJudge:
 
                             prime_prompt_critique = ""
                             epistemic_critique = ""
-                            triage_critique = ""
-                            grounding_critique = ""
+                            factual_drift_detected = None
                             retort = ""
                             if parsed_json and isinstance(parsed_json, dict):
                                 prime_prompt_critique = parsed_json.get(
@@ -246,8 +262,8 @@ class MLXAsyncJudge:
                                     "epistemic_critique",
                                     parsed_json.get("grounding_critique", ""),
                                 )
-                                triage_critique = prime_prompt_critique
-                                grounding_critique = epistemic_critique
+                                if "factual_drift_detected" in parsed_json:
+                                    factual_drift_detected = bool(parsed_json.get("factual_drift_detected"))
                                 retort = parsed_json.get("retort", "")
 
                             return {
@@ -261,8 +277,7 @@ class MLXAsyncJudge:
                                 "critique": content,
                                 "prime_prompt_critique": prime_prompt_critique,
                                 "epistemic_critique": epistemic_critique,
-                                "triage_critique": triage_critique,
-                                "grounding_critique": grounding_critique,
+                                "factual_drift_detected": factual_drift_detected,
                                 "retort": retort,
                                 "route_feedback": {
                                     "factual_target": "CHROMADB_PORT_8001",

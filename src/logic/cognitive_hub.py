@@ -3749,6 +3749,17 @@ class CognitiveHub:
                 logging.warning(
                     f"[FEAT-582] Deep Thought remote synthesis timed out (>45.0s). Preserving available synthesis."
                 )
+            # [K4] Strip accidental leading JSON metadata fragment (e.g. TARGET_DOMAINS": [...]) from fallback models
+            if dt_synthesis:
+                stripped_dt = re.sub(
+                    r'^\s*(?:"?TARGET_DOMAINS"?\s*:\s*\[[^\]]*\]\s*,?\s*)+',
+                    "",
+                    dt_synthesis,
+                    flags=re.IGNORECASE,
+                )
+                if stripped_dt != dt_synthesis:
+                    logging.warning("[TRIPWIRE] [K4] Stripped leaked TARGET_DOMAINS JSON prefix from Deep Thought synthesis.")
+                    dt_synthesis = stripped_dt.lstrip()
             if self.broadcast and dt_synthesis:
                 await self.broadcast(
                     build_two_mice_stream_packet(

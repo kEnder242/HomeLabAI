@@ -4,10 +4,12 @@ import re
 
 import gkeepapi
 
-# Credentials from user
+# Credentials loaded from untracked config or environment (never hardcoded)
 EMAILS = ["kEnder242@gmail.com", "kender242@gmail.com"]
-PASSWORD = "[REDACTED_APP_PASSWORD]"
-PASSWORD_SPACES = "[REDACTED_APP_PASSWORD]"
+_KEEP_CFG_PATH = os.path.expanduser("~/.config/homelab/keep_sync.json")
+_keep_cfg = json.load(open(_KEEP_CFG_PATH)) if os.path.exists(_KEEP_CFG_PATH) else {}
+PASSWORD = os.environ.get("KEEP_APP_PASSWORD", _keep_cfg.get("password", ""))
+PASSWORD_SPACES = os.environ.get("KEEP_APP_PASSWORD_SPACES", _keep_cfg.get("password_spaces", ""))
 AUTH_FILE = os.path.expanduser("~/.config/gkeep/auth.json")
 
 

@@ -174,7 +174,7 @@ def extract_judge_score(event_id: str, max_lookback_s: float = 60.0) -> Tuple[fl
         if pinky_entries:
             target = pinky_entries[-1]
             score = float(target.get("score", 0.0))
-            critique = target.get("style_critique") or target.get("critique") or target.get("status", "VERIFIED")
+            critique = target.get("critique") or target.get("style_critique") or target.get("status", "VERIFIED")
             return score, f"[STAGE_5_PINKY] {critique}"
 
         # 2. Prefer Deep Thought synthesis
@@ -182,13 +182,13 @@ def extract_judge_score(event_id: str, max_lookback_s: float = 60.0) -> Tuple[fl
         if dt_entries:
             target = dt_entries[-1]
             score = float(target.get("score", 0.0))
-            critique = target.get("style_critique") or target.get("critique") or target.get("status", "VERIFIED")
+            critique = target.get("critique") or target.get("style_critique") or target.get("status", "VERIFIED")
             return score, f"[STAGE_4_DEEP_THOUGHT] {critique}"
 
         # 3. Fallback to latest non-stub entry
         latest = matched_entries[-1]
         score = float(latest.get("score", 0.0))
-        critique = latest.get("style_critique") or latest.get("critique") or latest.get("status", "VERIFIED")
+        critique = latest.get("critique") or latest.get("style_critique") or latest.get("status", "VERIFIED")
         source = latest.get("source", "UNKNOWN")
         return score, f"[{source}] {critique}"
     except Exception as e:
