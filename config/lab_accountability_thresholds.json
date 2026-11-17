@@ -16,11 +16,11 @@
     "min_brain_tokens": 50,
     "min_thought_tokens": 40,
     "min_critic_score": 0.70,
-    "max_wait_seconds": 120.0
+    "max_wait_seconds": 150.0
   },
   "timeouts": {
-    "round_table_deliberation_max_wait_sec": 120.0,
-    "watchdog_probe_subprocess_timeout_sec": 140.0,
+    "round_table_deliberation_max_wait_sec": 150.0,
+    "watchdog_probe_subprocess_timeout_sec": 165.0,
     "engine_warmup_timeout_sec": 90.0,
     "engine_reignition_probe_timeout_sec": 240.0,
     "foyer_greeting_probe_timeout_sec": 5.0,

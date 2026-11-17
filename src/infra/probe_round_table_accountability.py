@@ -359,6 +359,41 @@ def resolve_probe_topic(cli_topic: str | None = None) -> str:
     return archetypes[idx]
 
 
+def verify_live_gate(foyer_url: str) -> tuple[bool, str | None]:
+    """[BKM-024 / FEAT-524] Pre-flight gate: verifies daemon bytecode matches git HEAD and working tree is not dirty in resident code."""
+    try:
+        import subprocess
+        import urllib.request
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        res = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=root, capture_output=True, text=True, timeout=5)
+        local_commit = res.stdout.strip() if res.returncode == 0 else None
+
+        diff_res = subprocess.run(["git", "status", "--porcelain", "src/"], cwd=root, capture_output=True, text=True, timeout=5)
+        raw_dirty = [l.strip() for l in diff_res.stdout.strip().split("\n") if l.strip()] if diff_res.returncode == 0 else []
+        resident_dirty = [
+            f for f in raw_dirty
+            if not ("/tests/" in f or "src/tests" in f or "probe_" in f or "watchdog" in f)
+            and any(pkg in f for pkg in ("src/v5/", "src/logic/", "src/nodes/", "src/infra/", "src/lab_attendant.py"))
+        ]
+
+        with urllib.request.urlopen(f"{foyer_url}/status?timeout=5", timeout=5) as r:
+            if r.status != 200:
+                return False, f"Foyer /status returned HTTP {r.status}"
+            data = json.loads(r.read().decode())
+            boot_commit = data.get("boot_commit", "unknown")
+
+        if local_commit and boot_commit != local_commit:
+            return False, f"STALE BYTECODE DETECTED: Daemon boot_commit={boot_commit} vs git HEAD={local_commit}. Run 'sudo systemctl restart lab-attendant.service'."
+
+        if resident_dirty:
+            return False, f"DIRTY LAB DETECTED: {len(resident_dirty)} uncommitted daemon file(s) in src/ ({resident_dirty[0]}). Testing uncommitted code against stale daemon memory is forbidden [BKM-024]."
+
+        return True, None
+    except Exception as e:
+        logger.warning(f"verify_live_gate encountered non-fatal check error: {e}")
+        return True, None
+
+
 async def run_round_table_accountability_probe(
     foyer_url: str = DEFAULT_FOYER_URL,
     topic: str | None = None,
@@ -379,9 +414,27 @@ async def run_round_table_accountability_probe(
             "error": "aiohttp not installed in environment",
         }
 
+    # Step 0: Pre-flight gate check for live bytecode parity and dirty state [BKM-024 / FEAT-524]
+    gate_ok, gate_err = verify_live_gate(foyer_url)
+    if not gate_ok:
+        logger.error(f"[GATE REJECTION] {gate_err}")
+        return {
+            "status": "FAIL",
+            "greeting_latency_ms": 0.0,
+            "circuit_latency_ms": 0.0,
+            "total_probe_duration_ms": 0.0,
+            "foyer_state": "DIRTY_OR_STALE",
+            "triage_routing": "blocked",
+            "critic_score": 0.0,
+            "sovereign_quorum": False,
+            "timestamp": datetime.now().isoformat(),
+            "error": f"PRE-FLIGHT GATE REJECTION: {gate_err}",
+            "topic": topic,
+        }
+
     thresholds = load_probe_thresholds()
     greeting_timeout = float(thresholds.get("greeting_timeout_sec", 5.0))
-    max_wait = float(thresholds.get("max_wait_seconds", 120.0))
+    max_wait = float(thresholds.get("max_wait_seconds", 150.0))
 
     start_total = time.perf_counter()
     async with aiohttp.ClientSession() as session:

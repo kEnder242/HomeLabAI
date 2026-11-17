@@ -23,8 +23,8 @@ REPO_ROOT = _find_repo_root(os.path.dirname(__file__))
 
 def get_bytecode_status(
     repo_root: str | None = None,
-) -> tuple[str | None, str | None, bool | None]:
-    """[FEAT-524] Core evaluator for local Git HEAD vs served Lab Attendant boot commit."""
+) -> tuple[str | None, str | None, bool | None, list[str]]:
+    """[FEAT-524] Core evaluator for local Git HEAD vs served Lab Attendant boot commit + dirty tree check."""
     root = repo_root or REPO_ROOT
     local_commit: str | None = None
     try:
@@ -39,6 +39,26 @@ def get_bytecode_status(
             local_commit = result.stdout.strip()
     except Exception:
         local_commit = None
+
+    dirty_files: list[str] = []
+    try:
+        diff_res = subprocess.run(
+            ["git", "status", "--porcelain", "src/"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if diff_res.returncode == 0 and diff_res.stdout.strip():
+            raw_dirty = [line.strip() for line in diff_res.stdout.strip().split("\n") if line.strip()]
+            # Focus on daemon resident python files; exclude test harness files
+            dirty_files = [
+                f for f in raw_dirty
+                if not ("/tests/" in f or "src/tests" in f or "probe_" in f or "watchdog" in f)
+                and any(pkg in f for pkg in ("src/v5/", "src/logic/", "src/nodes/", "src/infra/", "src/lab_attendant.py"))
+            ]
+    except Exception:
+        pass
 
     served_commit: str | None = None
     is_vocal_status: bool | None = None
@@ -55,12 +75,12 @@ def get_bytecode_status(
     except Exception:
         served_commit = None
 
-    return local_commit, served_commit, is_vocal_status
+    return local_commit, served_commit, is_vocal_status, dirty_files
 
 
-def assert_live_bytecode(repo_root: str | None = None, enforce_vocal: bool = False):
-    """[FEAT-524] Standalone / Pytest callable gate enforcing fresh bytecode before live runs."""
-    local_commit, served_commit, is_vocal_status = get_bytecode_status(repo_root)
+def assert_live_bytecode(repo_root: str | None = None, enforce_vocal: bool = False, allow_dirty: bool = False):
+    """[FEAT-524] Standalone / Pytest callable gate enforcing fresh bytecode and clean src/ before live runs."""
+    local_commit, served_commit, is_vocal_status, dirty_files = get_bytecode_status(repo_root)
 
     if not served_commit:
         err = (
@@ -88,6 +108,21 @@ def assert_live_bytecode(repo_root: str | None = None, enforce_vocal: bool = Fal
         else:
             _print_warning_box(
                 f"[ERROR] STALE BYTECODE\nLocal:  {local_commit}\nServed: {served_commit}"
+            )
+            raise RuntimeError(err)
+
+    if not allow_dirty and dirty_files:
+        err = (
+            f"LIVE INTEGRITY VIOLATION: Lab working tree is DIRTY in src/!\n"
+            f"Modified files ({len(dirty_files)}):\n  " + "\n  ".join(dirty_files[:10]) + "\n"
+            f"The live server is running pre-edit bytecode. Testing dirty code against stale server memory is strictly forbidden [BKM-024].\n"
+            f"Action required: Commit changes or discard them, then run 'sudo systemctl restart lab-attendant.service'."
+        )
+        if "pytest" in sys.modules:
+            pytest.fail(err)
+        else:
+            _print_warning_box(
+                f"[ERROR] DIRTY WORKING TREE IN src/\n{len(dirty_files)} uncommitted files"
             )
             raise RuntimeError(err)
 
