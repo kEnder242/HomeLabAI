@@ -82,7 +82,7 @@ def _load_engine_seats() -> list[dict[str, Any]]:
             "id": "M5_AIR",
             "name": "M5_AIR",
             "host": "192.168.1.46",
-            "port": 8000,
+            "port": 8002,  # [FEAT-685 / LAB-125] Headroom proxy port for M5 Air
             "protocol": "OPENAI",
             "probe_path": "/v1/chat/completions",
             "probe_payload": {
