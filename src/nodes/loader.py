@@ -458,7 +458,8 @@ class BicameralNode:
             base_url = f"http://{resolved_ip}:{port}"
         elif target_host == "M5_AIR":
             engine_type = "OMLX"
-            port = host_cfg.get("mlx_port", 8000)
+            # [Story 108.41 / FEAT-680] Route through Headroom proxy port (8002) for token compression & thinking suppression
+            port = host_cfg.get("headroom_port", host_cfg.get("mlx_port", 8000))
             base_url = f"http://{resolved_ip}:{port}"
         else:
             engine_type = "OLLAMA"
@@ -818,6 +819,11 @@ class BicameralNode:
                     "\n\n**Visible Consensus**:",
                     "Conversation has concluded",
                 ] + (["</thought>", "</think>"] if self.name.lower() == "thought" else []),
+                # [FEAT-680 / BKM-079] Root-level thinking suppression for OpenAI/vLLM/llama-server
+                "chat_template_kwargs": {"enable_thinking": False},
+                "enable_thinking": False,
+                "think": False,
+                "reasoning_effort": "low",
                 "extra_body": {
                     "reasoning_effort": "low",
                     "reasoning": 0,
