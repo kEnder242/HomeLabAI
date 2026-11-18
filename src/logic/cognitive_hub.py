@@ -3686,6 +3686,7 @@ class CognitiveHub:
         request_id: str = "default",
         brain_bullets: str = "",
         drop_reminder: str = "",
+        relay_queue: asyncio.Queue | None = None,
     ) -> str:
         """[FEAT-489 / BKM-083 Stage 3.2] Deep Thought Strategy: laconic architectural synthesis with FEAT-523 interest token budget.
 
@@ -3748,6 +3749,11 @@ class CognitiveHub:
                         max_tokens=None,
                     ):
                         dt_synthesis += token
+                        # [STORY 113.20 / FEAT-233 / BKM-102] Pipe each streamed
+                        # Deep Thought token to Pinky's prefill buffer evaluation via
+                        # the relay queue so she need not wait for monolithic EOF.
+                        if relay_queue is not None:
+                            await relay_queue.put(token)
                         if shutdown_event and shutdown_event.is_set():
                             break
             except (asyncio.TimeoutError, TimeoutError):
@@ -4102,16 +4108,44 @@ class CognitiveHub:
             if current_target == "brain":
                 return True
         else:
-            dt_synthesis = await self.step_deep_thought(
-                query,
-                brain_grounding=bedrock_payload if bedrock_payload else brain_grounding,
-                interest=boosted_interest,
-                pinky_take=pinky_take,
-                rag_context=focus_context,
-                shutdown_event=shutdown_event,
-                request_id=request_id,
-                drop_reminder=drop_reminder,
-            )
+            # [STORY 113.20 / FEAT-233 / BKM-102] Pipelined streaming relay:
+            # Deep Thought streams tokens into an asyncio.Queue so Pinky's prefill
+            # buffer evaluation begins concurrently rather than waiting for the
+            # monolithic EOF string returned by step_deep_thought().
+            dt_relay_queue: asyncio.Queue = asyncio.Queue()
+            dt_prefill_buffer: list[str] = []
+
+            async def _pinky_prefill_consumer() -> None:
+                """Drain Deep Thought stream tokens into Pinky's prefill buffer."""
+                while True:
+                    token = await dt_relay_queue.get()
+                    if token is None:  # EOF sentinel
+                        break
+                    if token:
+                        dt_prefill_buffer.append(token)
+
+            prefill_task = asyncio.create_task(_pinky_prefill_consumer())
+            try:
+                dt_synthesis = await self.step_deep_thought(
+                    query,
+                    brain_grounding=bedrock_payload if bedrock_payload else brain_grounding,
+                    interest=boosted_interest,
+                    pinky_take=pinky_take,
+                    rag_context=focus_context,
+                    shutdown_event=shutdown_event,
+                    request_id=request_id,
+                    drop_reminder=drop_reminder,
+                    relay_queue=dt_relay_queue,
+                )
+            finally:
+                # Always signal EOF to the prefill consumer so it terminates cleanly.
+                await dt_relay_queue.put(None)
+                await prefill_task
+            # [STORY 113.20] Expose the concurrently-assembled Deep Thought prefill
+            # buffer so downstream Pinky stages can consume it without a re-read.
+            self._deep_thought_prefill_buffer = "".join(dt_prefill_buffer)
+            if self._deep_thought_prefill_buffer and not dt_synthesis:
+                dt_synthesis = self._deep_thought_prefill_buffer
 
         # [STORY 105.10] Post-Waterfall Learning Target Queueing: when the
         # waterfall ran but produced scarce synthesis or explicitly lacked a
