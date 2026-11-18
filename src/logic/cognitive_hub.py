@@ -4167,15 +4167,10 @@ class CognitiveHub:
         else:
             pinky_context = dt_synthesis if dt_synthesis else (bedrock_payload or brain_grounding)
 
-        await self.step_pinky_voice(
-            query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id,
-            vibe=vibe, topic_directive=topic_directive,
-            pinky_take=getattr(self, "_last_pinky_greeting", ""),
-        )
-
-        # [STORY 108.2] Decoupled Out-of-Band Entailment Audit: schedule step_entailment_audit
-        # on Deep Thought as a non-blocking asyncio.create_task so Pinky streams her
-        # conversational delivery to Jason immediately without waiting for the audit.
+        # [STORY 113.30] Concurrent Pre-Hydration of the Sovereign Critic:
+        # Schedule step_entailment_audit via asyncio.create_task BEFORE invoking
+        # step_pinky_voice so the Sovereign Critic rubric is evaluated concurrently
+        # while Pinky delivers her spoken TL;DR.
         strategic_response = dt_synthesis or brain_grounding
         strategic_source = "Deep Thought" if dt_synthesis else "Brain (Archive)"
         if strategic_response and boosted_interest >= 0.35:
@@ -4193,6 +4188,12 @@ class CognitiveHub:
                 )
             except Exception as e:
                 logging.error(f"[HUB] Failed to schedule out-of-band entailment audit: {e}")
+
+        await self.step_pinky_voice(
+            query, pinky_context, boosted_interest, shutdown_event=shutdown_event, request_id=request_id,
+            vibe=vibe, topic_directive=topic_directive,
+            pinky_take=getattr(self, "_last_pinky_greeting", ""),
+        )
 
         logging.info(
             f"[FEAT-489] Tri-Node handover complete: Brain {len(brain_grounding)} chars -> Deep Thought {len(dt_synthesis)} chars -> Pinky TL;DR streamed -> Critic evaluated."
