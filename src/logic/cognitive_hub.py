@@ -3685,6 +3685,7 @@ class CognitiveHub:
         shutdown_event=None,
         request_id: str = "default",
         brain_bullets: str = "",
+        drop_reminder: str = "",
     ) -> str:
         """[FEAT-489 / BKM-083 Stage 3.2] Deep Thought Strategy: laconic architectural synthesis with FEAT-523 interest token budget.
 
@@ -3710,6 +3711,10 @@ class CognitiveHub:
                 prompt_parts.append(f"[BRAIN_GROUNDING]:\n{effective_grounding}")
             elif rag_context:
                 prompt_parts.append(f"[RAG_CONTEXT]:\n{rag_context}")
+
+            # [FEAT-684 / Story 112.190 Test 2] Speculative negative delta / drop reminder steering
+            if drop_reminder:
+                prompt_parts.append(drop_reminder)
 
             # [STORY 112.70] Deep Thought hydration: unthread a TOPIC_PIVOT turn.
             continuity_vector = self.turn_thought_trace.get("continuity_vector") or getattr(self, "continuity_vector", None)
@@ -3938,6 +3943,16 @@ class CognitiveHub:
 
         # Stage 3.1: Brain Gatekeeper (continuous fuel pacing)
         pinky_take = getattr(self, "_last_pinky_greeting", "") or self.turn_thought_trace.get("pinky_greeting", "")
+
+        # [FEAT-684 / Story 112.190 Test 1] Concurrent Stage 1/2 Static Anchor Pre-Fill Dispatch
+        # Dispatch static prefix pre-warming asynchronously to active Deep Thought seat (M5 Air or Kender backup)
+        # while Brain evaluates candidate vectors on the local 3.6 MoE engine.
+        thought_node = self.residents.get("thought")
+        if thought_node and hasattr(thought_node, "prewarm"):
+            asyncio.create_task(
+                thought_node.prewarm(query, static_context=focus_context[:800] if focus_context else "", request_id=request_id)
+            )
+
         brain_grounding = await self.step_brain_gatekeeper(
             query, focus_context, gate_interest, pinky_take=pinky_take, shutdown_event=shutdown_event, request_id=request_id
         )
@@ -3959,6 +3974,18 @@ class CognitiveHub:
                 pristine_chunks[int(cm.group(1))] = cm.group(2).strip()
             kept_chunks = [pristine_chunks[k] for k in sorted(set(kept_ids)) if k in pristine_chunks]
             bedrock_payload = "\n\n".join(kept_chunks)
+
+        # [FEAT-684 / Story 112.190 Test 2] Speculative Negative Delta / Drop Reminder Construction
+        drop_reminder = ""
+        if drop_ids:
+            drop_chunks_str = ", ".join(f"CHUNK-{d}" for d in sorted(set(drop_ids)))
+            drop_reminder = (
+                f"[CURATOR_DROP_REMINDER]: Brain evaluated candidate context and discarded {len(drop_ids)} irrelevant chunks: "
+                f"{drop_chunks_str}. Exclude these discarded chunks from your analysis and ground strictly in the verified bedrock."
+            )
+            logging.info(
+                f"[FEAT-684] Constructed drop reminder for {len(drop_ids)} chunks: {drop_chunks_str}"
+            )
 
         if candidate_count > 0 and (kept_ids or drop_ids):
             if kept_count >= 1 or "<boost_interest>" in (brain_grounding or "") or "<upvote>" in (brain_grounding or ""):
@@ -4083,6 +4110,7 @@ class CognitiveHub:
                 rag_context=focus_context,
                 shutdown_event=shutdown_event,
                 request_id=request_id,
+                drop_reminder=drop_reminder,
             )
 
         # [STORY 105.10] Post-Waterfall Learning Target Queueing: when the

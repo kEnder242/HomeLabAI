@@ -98,8 +98,8 @@ def test_speculative_relay_2x_headstart_window():
     )
     # Default calibrated baseline: t_warmed=0.20 -> 0.40s (400ms) head start
     relay = SpeculativeTriageRelay(broadcast_mock, vllm_fn=vllm_mock)
-    assert relay.head_start_window == pytest.approx(0.40, rel=1e-2)
+    assert abs(relay.head_start_window - 0.40) < 0.01
 
     # Custom override verification
     custom_relay = SpeculativeTriageRelay(broadcast_mock, vllm_fn=vllm_mock, t_warmed=0.09)
-    assert custom_relay.head_start_window == pytest.approx(0.18, rel=1e-2)
+    assert abs(custom_relay.head_start_window - 0.18) < 0.01

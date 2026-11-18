@@ -632,6 +632,77 @@ class BicameralNode:
         return False, fail_msg
 
 
+    async def prewarm(
+        self,
+        query: str,
+        static_context: str = "",
+        request_id: str = "default",
+    ) -> bool:
+        """[FEAT-684 / Story 112.190 Test 1] Asynchronous Static Anchor Pre-Fill Dispatch."""
+        if not self._engine_cache or self._engine_cache.get("type") == "NONE":
+            ok, _ = await self.ping_engine(force=False)
+            if not ok or not self._engine_cache:
+                return False
+
+        engine = self._engine_cache
+        target_url = engine.get("url")
+        model = engine.get("model")
+        engine_type = engine.get("type")
+
+        # Assemble static anchor prefill payload
+        system_prompt = self.system_prompt
+        if static_context:
+            system_prompt = f"{system_prompt}\n\n[STATIC_ANCHORS]:\n{static_context}"
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                if engine_type in ("VLLM", "OMLX"):
+                    payload = {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"[USER_QUERY]: {query}\n[PREWARM_ANCHOR]"},
+                        ],
+                        "max_tokens": 1,
+                        "temperature": 0.0,
+                        "enable_thinking": False,
+                        "think": False,
+                    }
+                    async with session.post(
+                        target_url,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=45.0),
+                    ) as resp:
+                        if resp.status == 200:
+                            logging.info(
+                                f"[{self.name}] [PREWARM] Pre-warmed static anchors on {engine.get('host')} for req {request_id}"
+                            )
+                            return True
+                elif engine_type == "OLLAMA":
+                    payload = {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"[USER_QUERY]: {query}\n[PREWARM_ANCHOR]"},
+                        ],
+                        "stream": False,
+                        "options": {"num_predict": 1, "temperature": 0.0},
+                    }
+                    async with session.post(
+                        target_url,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=45.0),
+                    ) as resp:
+                        if resp.status == 200:
+                            logging.info(
+                                f"[{self.name}] [PREWARM] Pre-warmed static anchors on Ollama ({engine.get('host')}) for req {request_id}"
+                            )
+                            return True
+        except Exception as e:
+            logging.debug(f"[{self.name}] [PREWARM] Prewarm probe non-critical failure: {e}")
+        return False
+
+
     async def generate_response(
         self,
         query,
