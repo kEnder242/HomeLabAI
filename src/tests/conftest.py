@@ -169,7 +169,7 @@ def pytest_sessionstart(session):
     Computes local git commit and fetches served commit from lab-attendant.
     Prints actionable SOFT_RELOAD / DEEP_RESET warnings if mismatch detected.
     """
-    local_commit, served_commit, is_vocal_status = get_bytecode_status()
+    local_commit, served_commit, is_vocal_status, dirty_files = get_bytecode_status()
 
     # Generate appropriate output
     global _LOCAL_COMMIT, _SERVED_COMMIT, _IS_VOCAL_STATUS
