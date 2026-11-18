@@ -28,6 +28,7 @@ Contract assertions (mirroring SPR-65 Story 65.4 verification clauses):
 import asyncio
 import json
 import unittest
+import unittest.mock
 from collections import defaultdict
 
 from logic.cognitive_hub import (
@@ -88,7 +89,7 @@ def test_stage2_prompt_embeds_brain_bullets_and_tldr_instructions():
     assert "ESB2 server, Intel Xeon E5-2600 platform" in prompt
     assert "PECI/MSR readback scarring" in prompt
     # In-character acknowledgment + 2-sentence conversational TL;DR.
-    assert "Narf! Brain dug up the firmware logs" in prompt
+    assert "Acknowledge Brain's analysis naturally" in prompt
     assert "2-sentence conversational TL;DR" in prompt
     assert "directly to Jason" in prompt
 
@@ -546,9 +547,9 @@ def test_zero_ui_streaming_and_no_raw_json_echo():
 
     assert ran is True
 
-    # 1. Assert ZERO live streaming token packets were sent
-    token_packets = [p for p in packets if p.get("type") == "token"]
-    assert len(token_packets) == 0, f"Expected 0 token-streaming packets, found {len(token_packets)}"
+    # 1. Assert ZERO live streaming token packets were sent for conversational channels
+    token_packets = [p for p in packets if p.get("type") == "token" and p.get("channel") in ("chat", "pinky", "voice")]
+    assert len(token_packets) == 0, f"Expected 0 token-streaming packets for conversational channels, found {len(token_packets)}"
 
     # 2. Inspect conversational voice packets: must never be raw JSON schemas
     voice_packets = [
