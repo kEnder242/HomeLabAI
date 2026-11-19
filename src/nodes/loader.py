@@ -228,6 +228,7 @@ class BicameralNode:
             self.append_to_tool_log("think", params_preview)
 
             full_response = ""
+            # [PROTECTED_PIPE: FEAT-233 / BKM-102] DO NOT BUFFER INTO MONOLITHIC STRING. Internal streaming only; UI pop enforced at WebSocket boundary.
             # [FEAT-361 / BKM-098 / FEAT-678] Universal Emission-to-Presentation Mapping:
             # Deterministically route tokens to explicit external presentation channels.
             # Structured schemas and scratchpads route to 'crosstalk'.

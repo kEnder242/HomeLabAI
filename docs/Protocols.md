@@ -2188,4 +2188,29 @@ A **Shakedown** is an immediate, full-fidelity execution of the exact modified s
    ```
 3. **Lean Block Quotas**: Each individual hydration source must maintain a lean byte quota (~200–350 tokens) so that compound stacks never crowd out the model's primary reasoning space.
 
+---
+
+## BKM-102: Decoupled Inter-Node Streaming vs. Edge Egress Governance
+**Feature Anchor:** `[BKM-102]` / `[FEAT-233.8]` / `[BKM-095]` / `[FEAT-361]` / `[BKM-005]`  
+**Colloquial Alias:** "Internal Pipe vs. Edge Pop Invariant", "The Edge-Only Mute Mandate", "Waterfall Decoupling Law"  
+**Tags:** `#bkm_102`, `#streaming_decoupling`, `#edge_pop`, `#single_delivery_authority`, `#internal_waterfall`  
+**Domain:** Distributed Inference Architecture, WebSocket Egress, Concurrency, Streaming Invariants  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Invariant
+The Single Delivery Authority Pop rule (`BKM-095`) is an **Edge Gateway Invariant**, strictly confined to public WebSocket dispatch to user chat interfaces. It is **NOT** a node-to-node backend restriction:
+1. **Backend Inter-Node Pipelining (`FEAT-233`)**: Processing nodes (Brain, Deep Thought, Pinky, Sovereign Critic) MUST communicate via asynchronous streaming generators, streaming pipes, or non-blocking bounded queues (`asyncio.Queue`). Monolithic string accumulation (`full_text += token`) before passing context downstream destroys hardware concurrency and forces accelerator silicon to sit idle.
+2. **Edge Egress Mute Boundary (`BKM-095`)**: Suppression of live mid-flight tokens applies **strictly and exclusively at the WebSocket egress layer** (`v5/foyer/router.py`) when the destination channel is a user-facing conversational channel (`channel in ("chat", "pinky", "voice")`).
+3. **Internal Diagnostic Streams Free**: Intermediate diagnostic, telemetry, and thought channels (`"insight"`, `"crosstalk"`, `"thought_stream"`, `"internal_stream"`) must stream freely across internal buses and diagnostic displays without being silenced by conversational pop filters.
+4. **Unit Test Scoping Rule**: Any unit test asserting `len(token_packets) == 0` globally across all channels without channel filtering (`channel in ("chat", "pinky", "voice")`) is an architectural violation and must fail review.
+
+### 2. Protected Code Guardrail Annotations
+All inter-node streaming pipes in `cognitive_hub.py`, `loader.py`, and `router.py` must carry the explicit comment guardrail:
+`# [PROTECTED_PIPE: FEAT-233 / BKM-102] DO NOT BUFFER INTO MONOLITHIC STRING. Internal streaming only; UI pop enforced at WebSocket boundary.`
+
+### 3. Verification & Anti-Relapse Gauntlet
+Prior to completing any sprint touching streaming or UI dispatch:
+- Run `pytest src/tests/test_two_mice_handover.py -v` verifying 23/23 tests pass with channel-scoped assertions.
+- Run `probe_round_table_accountability.py` on live running silicon (`BKM-024`) verifying `sovereign_quorum: true`, `critic_score >= 0.90`, and latency under the 60.0s floor.
+
 

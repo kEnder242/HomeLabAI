@@ -4110,6 +4110,7 @@ class CognitiveHub:
             if current_target == "brain":
                 return True
         else:
+            # [PROTECTED_PIPE: FEAT-233 / BKM-102] DO NOT BUFFER INTO MONOLITHIC STRING. Internal streaming only; UI pop enforced at WebSocket boundary.
             # [STORY 113.20 / FEAT-233 / BKM-102] Pipelined streaming relay:
             # Deep Thought streams tokens into an asyncio.Queue so Pinky's prefill
             # buffer evaluation begins concurrently rather than waiting for the
