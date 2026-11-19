@@ -473,8 +473,32 @@ class BicameralNode:
             else f"{base_url}/api/tags"
         )
 
+        # [FEAT-685 / LAB-119] Resolve centralized probe timeout per seat or global baseline
+        probe_timeout = 15.0
+        seats_cfg = self.infra.get("seats", [])
+        seat_match = next((s for s in seats_cfg if s.get("id") == target_host or s.get("name") == target_host), None)
+        if seat_match and "probe_timeout_sec" in seat_match:
+            probe_timeout = float(seat_match["probe_timeout_sec"])
+        else:
+            try:
+                cfg_path = (
+                    Path(__file__).resolve().parent.parent.parent
+                    / "config"
+                    / "lab_accountability_thresholds.json"
+                )
+                if cfg_path.exists():
+                    with open(cfg_path, "r", encoding="utf-8") as f:
+                        cfg_data = json.load(f)
+                        probe_timeout = float(
+                            cfg_data.get("timeouts", {}).get(
+                                "node_vocal_probe_timeout_sec", 15.0
+                            )
+                        )
+            except Exception:
+                pass
+
         try:
-            async with session.get(models_url, timeout=4) as r:
+            async with session.get(models_url, timeout=probe_timeout) as r:
                 if r.status != 200:
                     return False, None, f"Engine {engine_type} on {target_host} unreachable (Status {r.status})"
                 data = await r.json()
@@ -500,7 +524,7 @@ class BicameralNode:
                         "max_tokens": 10,
                     }
                     try:
-                        async with session.post(probe_url, json=probe_payload, timeout=4) as pr:
+                        async with session.post(probe_url, json=probe_payload, timeout=probe_timeout) as pr:
                             if pr.status != 200:
                                 pr_err = await pr.text()
                                 return False, None, f"Engine VLLM on {target_host} not vocal: {pr_err}"
@@ -523,7 +547,7 @@ class BicameralNode:
                         "max_tokens": 10,
                     }
                     try:
-                        async with session.post(probe_url, json=probe_payload, timeout=4) as pr:
+                        async with session.post(probe_url, json=probe_payload, timeout=probe_timeout) as pr:
                             if pr.status != 200:
                                 pr_err = await pr.text()
                                 return False, None, f"Engine oMLX on {target_host} not vocal: {pr_err}"
