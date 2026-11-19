@@ -5260,14 +5260,21 @@ class FoyerRouter:
                         if "brain" in s_lower or "thought" in s_lower:
                             channel = "insight"
 
-                        # [PROTECTED_PIPE: FEAT-233 / BKM-102] DO NOT BUFFER INTO MONOLITHIC STRING. Internal streaming only; UI pop enforced at WebSocket boundary.
-                        # [Story 107.17 / Story 108.20 / BKM-095 / Story 113.10] Single Delivery Authority:
+                        # [Story 107.17 / Story 108.20 / BKM-095] Single Delivery Authority:
                         # Two-mice handover stages broadcast their finalized paragraph pop directly upon completion.
-                        # Suppress duplicate broadcast for conversational channels ('chat', 'pinky', 'voice') while allowing diagnostic channels ('insight', 'crosstalk') to stream uninhibited.
-                        # Conversational channels are defined as: chat, pinky, voice (per BKM-095 egress filtering).
-                        conversational_channels = ("chat", "pinky", "voice")
-                        is_conversational_channel = channel in conversational_channels
-                        if not is_conversational_channel:
+                        # Silence duplicate broadcast here across ALL channels to eliminate dual-bubble printing, while preserving telemetry logging.
+                        is_handover_persona = any(
+                            k in s_lower for k in (
+                                "brain (archive)",
+                                "pinky (voice)",
+                                "deep thought",
+                                "pinky (triage)",
+                                "pinky (response)",
+                                "pinky (coherence critic)",
+                                "pinky",
+                            )
+                        )
+                        if not is_handover_persona:
                             await self.broadcast(
                                 {
                                     "type": "chat",

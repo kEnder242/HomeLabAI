@@ -547,9 +547,9 @@ def test_zero_ui_streaming_and_no_raw_json_echo():
 
     assert ran is True
 
-    # 1. Assert ZERO live streaming token packets were sent for conversational channels
-    token_packets = [p for p in packets if p.get("type") == "token" and p.get("channel") in ("chat", "pinky", "voice")]
-    assert len(token_packets) == 0, f"Expected 0 token-streaming packets for conversational channels, found {len(token_packets)}"
+    # 1. Assert ZERO live streaming token packets were sent
+    token_packets = [p for p in packets if p.get("type") == "token"]
+    assert len(token_packets) == 0, f"Expected 0 token-streaming packets, found {len(token_packets)}"
 
     # 2. Inspect conversational voice packets: must never be raw JSON schemas
     voice_packets = [
