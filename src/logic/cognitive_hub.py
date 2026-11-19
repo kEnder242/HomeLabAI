@@ -883,8 +883,10 @@ def build_two_mice_stage_prompt(
     )
 
     section = (
+        "<cluster_root>\n"
         "[PILLAR_1_RECORD]: SHARED BEDROCK LAB FOUNDATION\n"
-        f"{TWO_MICE_BEDROCK_FOUNDATION}\n\n"
+        f"{TWO_MICE_BEDROCK_FOUNDATION}\n"
+        "</cluster_root>\n"
         f"{bedrock_block}"
         f"{pacing_line}\n\n"
         "[PILLAR_3_RECORD]: TURN SEQUENCE STAGE\n"
