@@ -105,13 +105,15 @@ class TestRefineQueueIsolation(unittest.IsolatedAsyncioTestCase):
 
     async def test_queue_drainer_skips_internal_pass_if_queued(self):
         """[FEAT-455 / Story 108.28] Verify queue_drainer drops any orphaned internal events."""
-        # Pre-seed QUEUE_FILE with an internal event and a standard event
+        # Pre-seed QUEUE_FILE with an internal event, dream event, and a standard event
         internal_evt = IntentEvent(query="[INTERNAL] [REFINE]: Stale background pass", source="test")
+        dream_evt = IntentEvent(query="[DREAM_PASS]: Synthesize reflections", source="dream_cycle")
         standard_evt = IntentEvent(query="What is the current lab status?", source="test")
 
         os.makedirs(os.path.dirname(self.queue_file), exist_ok=True)
         with open(self.queue_file, "w") as f:
             f.write(internal_evt.to_json() + "\n")
+            f.write(dream_evt.to_json() + "\n")
             f.write(standard_evt.to_json() + "\n")
 
         self.router.residents.booted = True
@@ -124,10 +126,10 @@ class TestRefineQueueIsolation(unittest.IsolatedAsyncioTestCase):
                     continue
                 event = IntentEvent.from_json(line)
                 if event.status == "PENDING" and event.id not in self.router.processed_ids:
+                    # [Story 113.70 / FEAT-687] Only [INTERNAL] and [REFINE] are bypassed
                     if (
                         event.query.startswith("[INTERNAL]")
                         or event.query.startswith("[REFINE]")
-                        or event.query.startswith("[DREAM_PASS]")
                     ):
                         self.router.processed_ids.append(event.id)
                         continue
@@ -137,10 +139,15 @@ class TestRefineQueueIsolation(unittest.IsolatedAsyncioTestCase):
 
         # Assert internal event was processed/drained but NEVER called division of labor
         self.assertIn(internal_evt.id, self.router.processed_ids)
+        self.assertIn(dream_evt.id, self.router.processed_ids)
         self.assertIn(standard_evt.id, self.router.processed_ids)
 
-        # Only standard event should have reached run_division_of_labor
-        self.router.run_division_of_labor.assert_called_once_with(
+        # Both dream and standard events should reach run_division_of_labor
+        self.assertEqual(self.router.run_division_of_labor.call_count, 2)
+        self.router.run_division_of_labor.assert_any_call(
+            dream_evt.query, source=dream_evt.source, request_id=dream_evt.id
+        )
+        self.router.run_division_of_labor.assert_any_call(
             standard_evt.query, source=standard_evt.source, request_id=standard_evt.id
         )
 
@@ -174,14 +181,14 @@ class TestRefineQueueIsolation(unittest.IsolatedAsyncioTestCase):
                 and (
                     query.startswith("[INTERNAL]")
                     or query.startswith("[REFINE]")
-                    or query.startswith("[DREAM_PASS]")
                 )
             )
 
         self.assertTrue(check_is_internal(data_internal))
         self.assertTrue(check_is_internal({"type": "text_input", "content": "foo", "internal": True}))
         self.assertTrue(check_is_internal({"type": "text_input", "content": "[REFINE] something"}))
-        self.assertTrue(check_is_internal({"type": "text_input", "content": "[DREAM_PASS] background pass"}))
+        # [FEAT-687 / Story 113.70] DREAM_PASS is an authentic multi-actor deliberation pass, not an internal isolated shortcut
+        self.assertFalse(check_is_internal({"type": "text_input", "content": "[DREAM_PASS] background pass"}))
         self.assertFalse(check_is_internal(data_standard))
         self.assertFalse(check_is_internal({"type": "text_input", "content": "Hello world"}))
 

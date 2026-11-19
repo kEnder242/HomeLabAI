@@ -4793,7 +4793,6 @@ class FoyerRouter:
                             or (isinstance(query, str) and (
                                 query.startswith("[INTERNAL]")
                                 or query.startswith("[REFINE]")
-                                or query.startswith("[DREAM_PASS]")
                             ))
                         )
                         if is_internal:
@@ -5763,11 +5762,12 @@ class FoyerRouter:
                                             self.processed_ids.append(event.id)
                                             continue
 
-                                        # [Story 108.28 / FEAT-455] Filter out internal maintenance/refinement/dream signals from voice waterfall
+                                        # [Story 108.28 / Story 113.70 / FEAT-455 / FEAT-525 / FEAT-687]
+                                        # Filter out internal maintenance/refinement signals from voice waterfall.
+                                        # Note: [DREAM_PASS] is preserved for full multi-actor division of labor & round table telemetry.
                                         if (
                                             event.query.startswith("[INTERNAL]")
                                             or event.query.startswith("[REFINE]")
-                                            or event.query.startswith("[DREAM_PASS]")
                                         ):
                                             logger.info(
                                                 f"[FOYER] [FEAT-455] Draining and bypassing internal pass from queue: {event.id}"
