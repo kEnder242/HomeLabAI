@@ -2213,4 +2213,59 @@ Prior to completing any sprint touching streaming or UI dispatch:
 - Run `pytest src/tests/test_two_mice_handover.py -v` verifying 23/23 tests pass with channel-scoped assertions.
 - Run `probe_round_table_accountability.py` on live running silicon (`BKM-024`) verifying `sovereign_quorum: true`, `critic_score >= 0.90`, and latency under the 60.0s floor.
 
+---
+
+## BKM-103: Deep Thought Protected Reasoning Authority & Relay Race Standby Invariant
+**Feature Anchor:** `[BKM-103]` / `[FEAT-474]` / `[FEAT-500]` / `[FEAT-586]` / `[FEAT-645]` / `[BKM-083]`  
+**Colloquial Alias:** "The Deep Thought Immunity Mandate", "Standby Local Never Preempts Silicon Authority", "The Asymmetric Relay Race Law"  
+**Tags:** `#bkm_103`, `#deep_thought`, `#speculative_relay`, `#m5_air`, `#standby_local`, `#authority_protection`  
+**Domain:** Distributed Inference Architecture, Speculative Execution, Speculative Triage, Silicon Hierarchy  
+**Status:** ACTIVE / MANDATORY  
+
+### 1. The Core Architectural Invariant
+1. **Deep Thought as Sovereign Reasoning Authority**: Deep Thought (Apple M5 Air on port 8002 / remote silicon) is the authoritative reasoning engine for architectural synthesis and complex deliberations. Local silicon (or Kender) serves as a **standby auxiliary backup**, primed to step in only if Deep Thought suffers catastrophic failure, network unreachability, or an unrecoverable timeout.
+2. **Ping / HTTP Reachability Lock**: Before dispatching speculative racing, the orchestrator executes a lightweight reachability probe (HTTP ping or socket check) against Deep Thought. If reachable, Deep Thought is flagged as `AUTHORITATIVE_ALIVE`.
+3. **Asymmetric Relay Protection (Standby Never Preempts Authority)**:
+   - When Deep Thought is `AUTHORITATIVE_ALIVE`, it runs with absolute execution immunity.
+   - The local standby racer runs concurrently to warm KV caches and prepare fallback tokens, but **MUST NEVER CANCEL OR PREEMPT DEEP THOUGHT** simply because local finishes faster.
+   - If Local completes first while Deep Thought is alive and generating, Local **yields and buffers its result in standby reserve**. Local will only win if Deep Thought exceeds the hard timeout ceiling (e.g., 20.0s) or returns an HTTP/transport error.
+   - When Deep Thought completes successfully, it **always wins**, and the local standby runner is discarded.
+
+### 2. Post-Mortem of the Sprint 67 / 100 Regression
+In Sprint 67 / 100 (`FEAT-586`, commit `89ff3959`), `SpeculativeTriageRelay` implemented a symmetric race model:
+```python
+# [REGRESSION: SPRINT 67/100] Cut-throat symmetric race cancelled Deep Thought mid-flight
+runners = [lead_task, racer_task]
+done, runners = await asyncio.wait(runners, return_when=asyncio.FIRST_COMPLETED)
+for task in done:
+    if self._is_valid_triage(task.result()):
+        for r in runners:
+            r.cancel()  # <--- FATAL: Local on localhost killed alive M5 Air over LAN/Wi-Fi
+```
+- **The Failure Mode**: The dynamic lead window was computed from `2 * t_warmed = 0.18s` (180ms), calibrated for localhost memory-bus speeds. Over Wi-Fi/LAN to Apple M5 Air, network TTFT is ~400–800ms. The 180ms lead window expired before M5 Air could emit its first token.
+- Local vLLM (running on 127.0.0.1 dual-GPU with zero network transit) launched, finished a trivial response in ~1.2s, and immediately executed `r.cancel()`, terminating M5 Air mid-generation.
+- Because `estimator.observe()` was only invoked on the winning task, M5 Air was locked out of ever recording a successful duration, permanently locking its lead window to 180ms and causing 99% of production queries to starve M5 Air.
+
+### 3. Implementation Mandate for Speculative Relays
+1. **Network Transit Floor**: Dynamic lead window for remote silicon (M5 Air) must enforce a minimum network transit floor:
+   $$W_{\text{lead}} = \max\left(2.5\,\text{s},\, (2 \times t_{\text{warmed}}) + L_t + (4 \times J_t)\right)$$
+   heavily favoring M5 Air.
+2. **Asymmetric Race Winner Resolution**:
+   ```python
+   # [PROTECTED_RELAY: BKM-103] Deep Thought protected authority
+   if is_deep_thought_alive:
+       # Local standby does not preempt M5 Air. Wait for lead_task with timeout.
+       try:
+           lead_result = await asyncio.wait_for(lead_task, timeout=hard_timeout_s)
+           if self._is_valid_triage(lead_result):
+               if not racer_task.done():
+                   racer_task.cancel()
+               return lead_result, "deep_thought"
+       except (asyncio.TimeoutError, Exception) as e:
+           logging.warning(f"[BKM-103] Deep Thought failed/timed out ({e}); activating standby local fallback.")
+           return await racer_task, "vllm"
+   ```
+3. **Telemetry Accountability**: Telemetry ledgers (`telemetry_ledger.jsonl` and `live_usage_stream.jsonl`) must distinguish between primary authoritative execution and emergency standby fallback activations.
+
+
 

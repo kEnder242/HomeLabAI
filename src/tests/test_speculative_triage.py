@@ -62,73 +62,77 @@ async def mock_invalid_response(query, context, schema, request_id):
     return {"inferred_intent": "missing fields"}
 
 
-@pytest.mark.asyncio
-async def test_kender_fast_path():
+def test_kender_fast_path():
     """Test Case 1: Deep Thought resolves within head-start window."""
-    relay = SpeculativeTriageRelay(
-        mock_broadcast, mock_kender_fast, mock_vllm_medium, t_warmed=0.5
-    )
-    result, winner = await relay.relay("test", {}, {}, "req1")
+    async def _test():
+        relay = SpeculativeTriageRelay(
+            mock_broadcast, mock_kender_fast, mock_vllm_medium, t_warmed=0.5
+        )
+        result, winner = await relay.relay("test", {}, {}, "req1")
 
-    assert winner in ["deep_thought", "kender"]
-    assert result["situation"] == "Kender fast path"
-    meta = relay.get_console_metadata(winner)
-    assert meta["channel"] == "insight"
-    assert meta["source"] == "Deep Thought (Triage)"
+        assert winner in ["deep_thought", "kender"]
+        assert result["situation"] == "Kender fast path"
+        meta = relay.get_console_metadata(winner)
+        assert meta["channel"] == "insight"
+        assert meta["source"] == "Deep Thought (Triage)"
+    asyncio.run(_test())
 
 
-@pytest.mark.asyncio
-async def test_kender_slow_vllm_wins():
+def test_kender_slow_vllm_wins():
     """Test Case 2: Deep Thought slow, vLLM speculative win."""
-    relay = SpeculativeTriageRelay(
-        mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=0.1
-    )
-    # head_start = 0.2s. Deep Thought sleeps 1.0s, vLLM sleeps 0.2s.
-    result, winner = await relay.relay("test", {}, {}, "req2")
+    async def _test():
+        relay = SpeculativeTriageRelay(
+            mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=0.1
+        )
+        # head_start = 0.2s. Deep Thought sleeps 1.0s, vLLM sleeps 0.2s.
+        result, winner = await relay.relay("test", {}, {}, "req2")
 
-    assert winner == "vllm"
-    assert result["situation"] == "Local vLLM speculative win"
-    meta = relay.get_console_metadata(winner)
-    assert meta["channel"] == "chat"
-    assert meta["source"] == "Lab (Triage)"
+        assert winner == "vllm"
+        assert result["situation"] == "Local vLLM speculative win"
+        meta = relay.get_console_metadata(winner)
+        assert meta["channel"] == "chat"
+        assert meta["source"] == "Lab (Triage)"
+    asyncio.run(_test())
 
 
-@pytest.mark.asyncio
-async def test_trailing_runner_cancellation():
+def test_trailing_runner_cancellation():
     """Test Case 3: Ensure trailing runner is cancelled (implicit via fast return)."""
-    relay = SpeculativeTriageRelay(
-        mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=0.01
-    )
-    result, winner = await relay.relay("test", {}, {}, "req3")
-    assert winner in ["deep_thought", "kender", "vllm"]
+    async def _test():
+        relay = SpeculativeTriageRelay(
+            mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=0.01
+        )
+        result, winner = await relay.relay("test", {}, {}, "req3")
+        assert winner in ["deep_thought", "kender", "vllm"]
+    asyncio.run(_test())
 
 
-@pytest.mark.asyncio
-async def test_fallback_on_error():
+def test_fallback_on_error():
     """Test Case 4: Fallback when primary fails."""
-    relay = SpeculativeTriageRelay(
-        mock_broadcast, mock_kender_error, mock_vllm_medium, t_warmed=0.1
-    )
-    result, winner = await relay.relay("test", {}, {}, "req4")
+    async def _test():
+        relay = SpeculativeTriageRelay(
+            mock_broadcast, mock_kender_error, mock_vllm_medium, t_warmed=0.1
+        )
+        result, winner = await relay.relay("test", {}, {}, "req4")
 
-    assert winner == "vllm"
-    assert result["situation"] == "Local vLLM speculative win"
+        assert winner == "vllm"
+        assert result["situation"] == "Local vLLM speculative win"
+    asyncio.run(_test())
 
 
-@pytest.mark.asyncio
-async def test_invalid_response_fallback():
+def test_invalid_response_fallback():
     """Test Case 5: Invalid JSON response handling."""
-    relay = SpeculativeTriageRelay(
-        mock_broadcast, mock_invalid_response, mock_vllm_medium, t_warmed=0.1
-    )
-    # Deep Thought returns invalid, vLLM should win
-    result, winner = await relay.relay("test", {}, {}, "req5")
+    async def _test():
+        relay = SpeculativeTriageRelay(
+            mock_broadcast, mock_invalid_response, mock_vllm_medium, t_warmed=0.1
+        )
+        # Deep Thought returns invalid, vLLM should win
+        result, winner = await relay.relay("test", {}, {}, "req5")
 
-    assert winner == "vllm"
+        assert winner == "vllm"
+    asyncio.run(_test())
 
 
-@pytest.mark.asyncio
-async def test_dual_check_gate_fast_bypass(monkeypatch):
+def test_dual_check_gate_fast_bypass(monkeypatch):
     """Test Case 6: When remote Deep Thought probe fails, fast socket gate bypasses head-start with 0 delay."""
     import logic.speculative_triage as spec_mod
 
@@ -144,21 +148,22 @@ async def test_dual_check_gate_fast_bypass(monkeypatch):
         },
     )
 
-    relay = SpeculativeTriageRelay(
-        mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=5.0
-    )
-    t0 = asyncio.get_event_loop().time()
-    result, winner = await relay.relay("test", {}, {}, "req6")
-    elapsed = asyncio.get_event_loop().time() - t0
+    async def _test():
+        relay = SpeculativeTriageRelay(
+            mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=5.0
+        )
+        t0 = asyncio.get_event_loop().time()
+        result, winner = await relay.relay("test", {}, {}, "req6")
+        elapsed = asyncio.get_event_loop().time() - t0
 
-    # Assert local vLLM won and elapsed time skipped the 10s window entirely (< 1.0s)
-    assert winner == "vllm"
-    assert result["situation"] == "Local vLLM speculative win"
-    assert elapsed < 1.0
+        # Assert local vLLM won and elapsed time skipped the 10s window entirely (< 1.0s)
+        assert winner == "vllm"
+        assert result["situation"] == "Local vLLM speculative win"
+        assert elapsed < 1.0
+    asyncio.run(_test())
 
 
-@pytest.mark.asyncio
-async def test_dual_check_gate_patient_runway(monkeypatch):
+def test_dual_check_gate_patient_runway(monkeypatch):
     """Test Case 7: When remote Deep Thought probe succeeds, 10s patient window allows slow warm start to win."""
     import logic.speculative_triage as spec_mod
 
@@ -174,14 +179,16 @@ async def test_dual_check_gate_patient_runway(monkeypatch):
         },
     )
 
-    # Deep Thought takes 0.3s (simulating warm generation); head-start is 2.0s (t_warmed=1.0)
-    relay = SpeculativeTriageRelay(
-        mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=1.0
-    )
-    result, winner = await relay.relay("test", {}, {}, "req7")
+    async def _test():
+        # Deep Thought takes 0.3s (simulating warm generation); head-start is 2.0s (t_warmed=1.0)
+        relay = SpeculativeTriageRelay(
+            mock_broadcast, mock_kender_slow, mock_vllm_medium, t_warmed=1.0
+        )
+        result, winner = await relay.relay("test", {}, {}, "req7")
 
-    assert winner in ["deep_thought", "kender"]
-    assert result["situation"] == "Kender slow path"
+        assert winner in ["deep_thought", "kender"]
+        assert result["situation"] == "Kender slow path"
+    asyncio.run(_test())
 
 
 if __name__ == "__main__":

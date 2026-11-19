@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -49,52 +50,84 @@ def test_context_scope():
     assert ContextScope.LONG.value == "LONG"
 
 
-@pytest.mark.asyncio
-async def test_cognitive_hub_context_scoping():
-    hub = CognitiveHub(
-        residents={},
-        broadcast_callback=AsyncMock(),
-        sensory_manager=None,
-        get_vram_status=None,
-        trigger_morning_briefing=None,
-    )
-    hub.residents = {"triage": MagicMock(), "pinky": MagicMock()}
-    hub.round_table_memory = ["User: Hello", "Pinky: Hi"]
-    hub.blackboard_ledger.record_bullet(1, "pinky", "User greeted us")
-    hub.blackboard_ledger.record_consensus(1, "Acknowledge greeting")
+def test_cognitive_hub_context_scoping():
+    async def _test():
+        hub = CognitiveHub(
+            residents={},
+            broadcast_callback=AsyncMock(),
+            sensory_manager=None,
+            get_vram_status=None,
+            trigger_morning_briefing=None,
+        )
+        hub.residents = {"triage": MagicMock(), "pinky": MagicMock()}
+        hub.round_table_memory = ["User: Hello", "Pinky: Hi"]
+        hub.blackboard_ledger.record_bullet(1, "pinky", "User greeted us")
+        hub.blackboard_ledger.record_consensus(1, "Acknowledge greeting")
 
-    # Mock resident call_tool to capture the transformed query
-    captured_queries = []
+        # Mock resident call_tool to capture the transformed query
+        captured_queries = []
 
-    async def mock_call_tool(tool_name, arguments):
-        captured_queries.append(arguments.get("query", ""))
-        return "response chunk"
+        async def mock_call_tool(tool_name, arguments):
+            captured_queries.append(arguments.get("query", ""))
+            return "response chunk"
 
-    hub.residents["triage"].call_tool = mock_call_tool
-    hub.residents["pinky"].call_tool = mock_call_tool
+        hub.residents["triage"].call_tool = mock_call_tool
+        hub.residents["pinky"].call_tool = mock_call_tool
 
-    # 1. Triage query (should be TURN isolated: no previous debate, no blackboard)
-    async for _ in hub._process_node_stream(
-        node_id="triage",
-        query="Classify intent",
-        context="",
-        source_name="TriageRelay",
-        scope=ContextScope.TURN,
-    ):
-        pass
-    assert len(captured_queries) == 1
-    assert "[PREVIOUS_DEBATE]" not in captured_queries[0]
-    assert "[BLACKBOARD_LEDGER]" not in captured_queries[0]
+        # 1. Triage query (should be TURN isolated: no previous debate, no blackboard)
+        async for _ in hub._process_node_stream(
+            node_id="triage",
+            query="Classify intent",
+            context="",
+            source_name="TriageRelay",
+            scope=ContextScope.TURN,
+        ):
+            pass
+        assert len(captured_queries) == 1
+        assert "[PREVIOUS_DEBATE]" not in captured_queries[0]
+        assert "[BLACKBOARD_LEDGER]" not in captured_queries[0]
 
-    # 2. Pinky query (should be LONG enriched: contains blackboard ledger)
-    async for _ in hub._process_node_stream(
-        node_id="pinky",
-        query="Evaluate response",
-        context="",
-        source_name="PinkyNode",
-        scope=ContextScope.LONG,
-    ):
-        pass
-    assert len(captured_queries) == 2
-    assert "[BLACKBOARD_LEDGER]" in captured_queries[1]
-    assert "User greeted us" in captured_queries[1]
+        # 2. Pinky query (should be LONG enriched: contains blackboard ledger)
+        async for _ in hub._process_node_stream(
+            node_id="pinky",
+            query="Evaluate response",
+            context="",
+            source_name="PinkyNode",
+            scope=ContextScope.LONG,
+        ):
+            pass
+        assert len(captured_queries) == 2
+        assert "[BLACKBOARD_LEDGER]" in captured_queries[1]
+        assert "User greeted us" in captured_queries[1]
+    asyncio.run(_test())
+
+
+def test_monotonic_turn_beyond_50_cap(tmp_path):
+    import json
+    output_file = str(tmp_path / "round_table_deltas.json")
+    ledger = BlackboardLedgerV2()
+
+    deltas = {
+        "triage": 1.0,
+        "pinky_stance": 2.0,
+        "brain_arch": 3.0,
+        "oracle": 4.0,
+        "pinky_judgment": 5.0,
+    }
+    for i in range(1, 55):
+        res = ledger.append_round_table_delta(
+            turn=1,
+            topic="TEST",
+            scope="LONG",
+            deltas=deltas,
+            bullets=["test bullet"],
+            consensus="ok",
+            output_path=output_file,
+        )
+        assert res["turn"] == i
+
+    with open(output_file) as f:
+        records = json.load(f)
+    assert len(records) == 50
+    assert records[0]["turn"] == 5
+    assert records[-1]["turn"] == 54

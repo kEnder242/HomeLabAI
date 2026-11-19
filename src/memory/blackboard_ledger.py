@@ -156,8 +156,9 @@ class BlackboardLedger:
             except Exception:
                 records = []
 
-        # Monotonic turn enforcement: strictly continuous sequence across sessions
-        monotonic_turn = len(records) + 1 if (not turn or turn <= len(records)) else int(turn)
+        # Monotonic turn enforcement: strictly continuous sequence across sessions independent of rolling window size
+        highest_turn = max((r.get("turn", 0) for r in records), default=0)
+        monotonic_turn = (highest_turn + 1) if (not turn or turn <= highest_turn) else int(turn)
 
         raw_t1 = round(float(deltas.get("triage", 0.0)), 3)
         raw_t2 = round(float(deltas.get("pinky_stance", 0.0)), 3)
