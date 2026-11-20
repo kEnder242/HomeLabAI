@@ -76,7 +76,7 @@ class MLXAsyncJudge:
     DEFAULT_CANDIDATES = [
         {
             "name": "M5_AIR",
-            "url": "http://192.168.1.46:8002",
+            "url": "http://192.168.1.46:8000",
             "model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
             "node_id": "NODE_3_M5_AIR_MLX",
         },

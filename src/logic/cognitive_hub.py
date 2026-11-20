@@ -2612,7 +2612,10 @@ class CognitiveHub:
                     if isinstance(critique_res, dict):
                         score = critique_res.get("score", 5)
                         retort = critique_res.get("retort", "")
-                        consensus_text = f"Score {score}/5 — {retort}".strip(" —")
+                        if (score == 0 or score == 0.0) and not retort:
+                            consensus_text = "Score 0/5 — Sovereign judge offline (Standby mode)"
+                        else:
+                            consensus_text = f"Score {score}/5 — {retort}".strip(" —")
                     else:
                         consensus_text = str(critique_res).strip()
                 if hasattr(self, "blackboard_ledger") and self.blackboard_ledger:
@@ -3697,6 +3700,7 @@ class CognitiveHub:
         t_dt_start = time.perf_counter()
         dt_synthesis = ""
         self._last_thought_duration = 0.0
+        self.turn_thought_trace["thought"] = None
         thought_node = self.residents.get("thought")
         if interest < 0.30:
             logging.info(
@@ -3787,6 +3791,8 @@ class CognitiveHub:
             if clean_dt_prose:
                 self.turn_thought_trace["thought"] = clean_dt_prose
                 dt_synthesis = clean_dt_prose
+            else:
+                self.turn_thought_trace["thought"] = "[OFFLINE_STANDBY] Deep Thought synthesis unavailable or timed out."
         else:
             self._last_thought_duration = 0.0
         return dt_synthesis

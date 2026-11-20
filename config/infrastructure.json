@@ -106,6 +106,8 @@
         "M5_AIR": {
             "ip_hint": "192.168.1.46",
             "mlx_port": 8000,
+            "primary_port": 8000,
+            "protocol": "OPENAI",
             "headroom_port": 8002,
             "webui_port": 3000,
             "ssh_user": "jasons-air",
@@ -130,11 +132,11 @@
             "name": "M5_AIR",
             "host": "Jasons-MacBook-Air.local",
             "fallback_hosts": ["192.168.1.46", "100.101.45.10", "jasons-macbook-air"],
-            "port": 8002,
+            "port": 8000,
             "protocol": "OPENAI",
             "probe_path": "/v1/models",
             "probe_payload": null,
-            "probe_timeout_sec": 15.0,
+            "probe_timeout_sec": 5.0,
             "default_model": "TokenAI-zer--Ternary-Bonsai-2-27B-MLX-oQ2-mtp",
             "t_warmed": 0.20,
             "t_cold": 0.85

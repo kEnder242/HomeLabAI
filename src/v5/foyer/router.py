@@ -213,7 +213,7 @@ def get_style_key():
 
 
 def resolve_thought_url():
-    """[FEAT-028] Resolves Deep Thought heartbeat URL from infrastructure config."""
+    """[FEAT-028 / Story 113.86] Resolves Deep Thought heartbeat URL from infrastructure config."""
     try:
         if os.path.exists(INFRA_CONFIG):
             with open(INFRA_CONFIG, "r") as f:
@@ -223,7 +223,13 @@ def resolve_thought_url():
             )
             host_cfg = infra.get("hosts", {}).get(primary, {})
             ip_hint = host_cfg.get("ip_hint", "127.0.0.1")
-            port = host_cfg.get("ollama_port", 11434)
+            proto = host_cfg.get("protocol") or infra.get("nodes", {}).get("thought", {}).get("protocol", "OLLAMA")
+            if str(proto).upper() == "OPENAI" or "air" in str(primary).lower():
+                port = host_cfg.get("primary_port") or host_cfg.get("mlx_port") or 8000
+                path = "/v1/models"
+            else:
+                port = host_cfg.get("ollama_port", 11434)
+                path = "/api/tags"
 
             # Dynamic resolution: DNS first, fall back to config hint
             try:
@@ -233,7 +239,7 @@ def resolve_thought_url():
                 ip = ip_hint
                 logging.debug(f"[RESOLVE] DNS failed for '{primary}'. Using hint: {ip}")
 
-            return f"http://{ip}:{port}/api/tags"
+            return f"http://{ip}:{port}{path}"
     except Exception as e:
         logging.error(f"[RESOLVE] Failed to resolve Brain URL: {e}")
         return ""
@@ -785,7 +791,12 @@ class FoyerRouter:
                         self._last_thought_fail = now
                         return False
                     data = await r.json()
-                    models = [m.get("name") for m in data.get("models", [])]
+                    # [Story 113.86] Support both Ollama {"models": [{"name": ...}]} and OpenAI {"data": [{"id": ...}]}
+                    models = []
+                    if "models" in data and isinstance(data["models"], list):
+                        models = [m.get("name") for m in data["models"] if isinstance(m, dict) and m.get("name")]
+                    elif "data" in data and isinstance(data["data"], list):
+                        models = [m.get("id") for m in data["data"] if isinstance(m, dict) and m.get("id")]
                     if not models:
                         self._last_thought_fail = now
                         return False
