@@ -1716,6 +1716,16 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
   - `[L1 Orchestrator]`: Directs end-to-end task flow, authors 4-anchor specifications, provides diagnostic feedback to local/cloud workers, evaluates live verification probes, and manages daemon lifecycles.
 - **THE ANTI-BYPASS INVARIANT & ESCALATION LADDER (Strictly Enforced):**
   When a story is tagged `[SWARM:LOCAL]`, dispatch MUST execute through the delegation harness (`HomeLabAI/src/tests/delegate.py`). AGY enables the worker as L1 through 3 diagnosed attempts before promoting to `[SWARM:CLOUD]`. Direct code takeover (`[AGY:TAKEOVER]`) is strictly the final last resort, permissible only after both local and cloud swarm tiers have executed, failed their required diagnostic remediation rounds, and logged an explicit diagnostic post-mortem.
+- **Binding Delegation Invariant**: Story delegation tags (`[SWARM:LOCAL]`, `[SWARM:CLOUD]`) are immutable execution contracts, not advisory classifications. Under no circumstances may `[AGY:PRIMARY]` execute edits or author files for a `[SWARM:*]` story without first executing physical dispatch to the designated tier via the delegation harness and completing the mandatory 3-round diagnostic escalation ladder.
+- **The Self-Promotion Interruption Flow (The Anti-Rogue Circuit Breaker):**
+  If AGY in Heads-Down/AFK mode ever feels the impulse or temptation to bypass delegation, rationalize direct code editing, or execute a story designated for `[SWARM:LOCAL]` or `[SWARM:CLOUD]` without having executed and failed the mandatory 3-attempt escalation ladder:
+  1. *Execution Freeze*: AGY is strictly forbidden from opening, modifying, or creating code files for that story.
+  2. *Mandatory Heads-Up Interruption (`BKM-007`)*: AGY MUST immediately halt autonomous execution, surface to Heads-Up mode, and present an explicit "Temptation-to-Rogue" disclosure to the operator containing:
+     - **Target Story & Tag**: The exact story ID and its assigned delegation tier.
+     - **Intervention Rationale**: The concrete impulse, assumption, or friction tempting AGY to intervene directly (e.g. driver glitch, subagent capability doubt, perceived triviality).
+     - **Attempt Accounting**: Empirical proof that 0/3 (or < 3) diagnosed delegation attempts were executed.
+     - **Explicit Fork**: A request for an explicit, single-use Operator Takeover Waiver, OR immediate instruction to execute the paved delegation dispatch path.
+  3. *Quiescence*: AGY must halt tool execution and await the operator's explicit direction. Proceeding autonomously under a self-assumed waiver is a severe protocol breach.
 
 #### Pillar 4: Adversarial Audit & Physical Silicon Certification (`BKM-007` + `BKM-024` + `INS-047`)
 - **Pre-Flight Adversarial Review:** Run Cloud Oracle audit on the sprint plan via the delegation harness (`python3 HomeLabAI/src/tests/delegate.py --mode oracle --dir Portfolio_Dev` $\to$ `ORACLE_REVIEW_SPRINT_*.md`, governed by `[BKM-061]`) to challenge assumptions and expose blind spots before code dispatch. (Note: The FastMCP tool `clara-dna_ask_oracle` under `[BKM-080]` is strictly an L2 worker-to-Tier-1 clean-kill escalation tool, NOT the pre-flight sprint reviewer).
@@ -1725,6 +1735,10 @@ This autonomy is NOT unconstrained liberty—it is earned and maintained strictl
 ### 1.1 Checklist & Artifact Currency Standard (The Idempotency & Level-of-Entry Rule)
 `BKM-086` can be treated as an operational checklist:
 - **Digital Checkbox Paper Trail**: The AFK checklist lives directly inside the active sprint plan (`SPRINT_PLAN_*.md`) as an interactive markdown checklist (`- [ ] / - [x]`). Avoid standalone scratch files; digitally checking each box forces deliberate verification and creates a durable paper trail that prevents glossing over pre-flight gates.
+- **Silicon Reachability & Dispatch Port Pre-Check**: Before dispatching any stories, execute a live health probe against all designated physical silicon endpoints:
+  1. Probe Kender (`192.168.1.26:11434` / `:4097`) and M5 Air (`192.168.1.46:8000`).
+  2. Record live endpoint status directly into the Pre-Flight Checklist table.
+  3. If reachable, activate the corresponding `[SWARM:LOCAL]` or `[SWARM:CLOUD]` harness immediately.
 - **Idempotent Execution**: Paved paths do not need to be followed twice **ONLY WHEN** the BKM flow has **ALREADY** been followed and the corresponding artifacts (grounding, 4-anchor plans, delegation targets, and test harnesses) are **CURRENT**.
 - **Level-of-Entry Flow-Down**: Any additions, scope changes, or newly introduced stories **MUST** trigger a new path flow at the exact level they were added (e.g., introducing a new story mandates Grounding $\to$ 4-Anchor Specification $\to$ Delegation/Verification, rather than jumping directly to execution or skipping preceding BKM gates).
 
