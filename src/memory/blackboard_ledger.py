@@ -270,7 +270,33 @@ class BlackboardLedger:
         except Exception as e:
             logging.warning(f"[BLACKBOARD] Background ChromaDB thread spawn failed: {e}")
 
+        # [FEAT-690] Non-blocking trigger push to Prometheus benchmark exporter (:8011)
+        try:
+            threading.Thread(
+                target=self.notify_prometheus_exporter,
+                args=(turn_entry,),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            logging.debug(f"[BLACKBOARD] Prometheus push spawn failed: {e}")
+
         return turn_entry
+
+    def notify_prometheus_exporter(self, entry: dict[str, Any]):
+        """[FEAT-690] Fire-and-forget push of round table deltas to benchmark exporter."""
+        try:
+            import urllib.request
+            data = json.dumps(entry).encode("utf-8")
+            req = urllib.request.Request(
+                "http://127.0.0.1:8011/push",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                pass
+        except Exception:
+            pass
 
     def commit_to_chroma(
         self,

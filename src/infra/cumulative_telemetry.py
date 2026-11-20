@@ -88,6 +88,21 @@ def log_telemetry_event(
             with open(STREAM_JSONL_PATH, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record) + "\n")
 
+            # [FEAT-690] Fire-and-forget push to Prometheus benchmark exporter (:8011)
+            try:
+                import urllib.request
+                data = json.dumps(record).encode("utf-8")
+                req = urllib.request.Request(
+                    "http://127.0.0.1:8011/push",
+                    data=data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=0.5) as resp:
+                    pass
+            except Exception:
+                pass
+
         # 2. Update cumulative_tokens.json atomically
         _update_cumulative_totals(
             source, seat, tier, tokens_generated, duration_seconds

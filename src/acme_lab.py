@@ -37,6 +37,10 @@ if __name__ == "__main__":
     ignition_script = os.path.join(LAB_DIR, "v5/ignition/manager.py")
     ignition_proc = subprocess.Popen([sys.executable, ignition_script])
 
+    # [FEAT-690] Spawn Benchmark Prometheus Exporter (:8011)
+    exporter_script = os.path.join(LAB_DIR, "infra/benchmark_prometheus_exporter.py")
+    exporter_proc = subprocess.Popen([sys.executable, exporter_script])
+
     try:
         # [Task 5.2] Execute one-off trigger task if requested
         if args.trigger_task:
@@ -71,3 +75,4 @@ if __name__ == "__main__":
         router.run()
     finally:
         ignition_proc.terminate()
+        exporter_proc.terminate()
