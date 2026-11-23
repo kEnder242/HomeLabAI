@@ -1,4 +1,4 @@
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 """
 [Story 99.0 / BKM-024 / FEAT-647] 100% Live stdio JSON-RPC MCP Server Integration Tests.

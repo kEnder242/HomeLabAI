@@ -1,4 +1,4 @@
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 # [FEAT-434 / FEAT-075 / BKM-023 / BKM-085 / SPR-110]
 # Unit tests for Decoupled Just-In-Time Career Compass Bedrock & Byte-Parity Verification

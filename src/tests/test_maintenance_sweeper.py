@@ -1,4 +1,4 @@
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for maintenance_sweeper satellite (LAB-095/LAB-096/LAB-099/REF-02)."""
 

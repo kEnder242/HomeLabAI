@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 # xorg_fd_logger.sh - Lightweight telemetry tracking open file descriptors for Xorg
 LOG_FILE="/home/jallred/Dev_Lab/xorg_fd_usage.log"

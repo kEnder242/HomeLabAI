@@ -1,4 +1,4 @@
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 """[FEAT-671 / LOOP-005 / BKM-035 / Story 108.15] Companion Unit Tests:
 Interactive Step-Trace Root Cause Attribution & Negative Exemplar Flywheel.

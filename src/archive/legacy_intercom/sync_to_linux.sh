@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 # Syncs the current directory to the AcmeLab folder on z87-Linux
 # Excludes heavy local folders like .venv or git

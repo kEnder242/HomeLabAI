@@ -1,4 +1,4 @@
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 def test_no_hardcoded_greeting_lists():
     """[BKM-015 Enforcement]: Ensure cognitive_hub.py contains zero static greeting string lists in executable code."""

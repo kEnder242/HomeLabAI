@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 # Syncs the local src/mic_test.py to the Linux host, 
 # then moves it to the GDrive mount for Windows to pick up.

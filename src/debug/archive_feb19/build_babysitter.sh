@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 LOG_FILE="/home/jallred/Dev_Lab/HomeLabAI/logs/build_monitor.log"
 BUILD_LOG="/home/jallred/Dev_Lab/HomeLabAI/logs/build_afk_rigor.log"

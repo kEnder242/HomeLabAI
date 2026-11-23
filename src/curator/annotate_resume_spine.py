@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 """[FEAT-585 / FEAT-626 / WIS-487] Sprint 95.2 -- Multi-Version Resume AST Citation
 & Diff Annotation.

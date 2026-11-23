@@ -1,4 +1,4 @@
-# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# Copyright 2025-2026 Jason Allred
 # SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-283 / Story 108.38] Test Suite for Foyer Startup Queue Compaction & Nightly Stale Purge.
