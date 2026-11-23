@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [Story 94.3 / SPR-94.0] Paper AST Schema v2 & Rubric v2 Deterministic Gate
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [SPR-82.1] Two-Tier AST Schema Strict Validator (HomeLabAI/src/v5/foyer/validate_paper_schema.py)
 =================================================================================================

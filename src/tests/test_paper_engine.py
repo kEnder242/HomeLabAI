@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 test_paper_engine.py
 [Sprint 84 / Sprint 85 Validation Suite - BKM-024]

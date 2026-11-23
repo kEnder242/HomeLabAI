@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """Maintenance Sweeper Satellite (LAB-095/LAB-096/LAB-099/REF-02).
 
 Extracted from router.py:scheduled_tasks_loop (L1437-1530).

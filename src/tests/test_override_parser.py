@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for override_parser satellite (FEAT-145/REF-01)."""
 
 from __future__ import annotations

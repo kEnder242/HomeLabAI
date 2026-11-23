@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 test_subversive_swarm_e2e.py — [FEAT-647 / FEAT-648 / BKM-072] Zero-Wandering Local Swarm Certification
 

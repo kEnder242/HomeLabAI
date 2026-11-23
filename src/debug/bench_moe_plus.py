@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 # [FEAT-466] Crosstalk Bar Orchestrator Error Telemetry
 # [FEAT-463] Same-Origin Tunnel Remote Control Routing & Telemetry
 # [FEAT-416] Single-Epoch Nightly Refinement Sweeper

@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """Universal Epistemic 5-Question Battery for gem quality evaluation.
 
 This module implements a deterministic, binary assertion-based evaluation

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 read_roundtable_turn.py — Fast Round Table Dialogue & Telemetry Extractor
 [FEAT-607] High-Speed Turn & Dialogue Extraction for Sovereign Lab Deliberations.

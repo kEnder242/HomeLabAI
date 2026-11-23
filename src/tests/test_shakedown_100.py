@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [Story 100.6 / FEAT-649] Greenfield Shakedown Test File.
 This file is the target for Sprint 100 Story 100.6 live shakedown.

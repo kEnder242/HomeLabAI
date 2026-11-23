@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """[SPR-82.3] Target Objective & JD Matching Engine — semantic alignment scoring.
 
 Implements Story 82.3 of SPR-82.0 (Generic Scoped Document Ingestion, Decoupled

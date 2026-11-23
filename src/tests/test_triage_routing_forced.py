@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """[FEAT-520] Unit & Playwright End-to-End Test Suite: Forced Triage Routing.
 Verifies:
 1. Deterministic forced triage win for PINKY (via <|PINKY|> token and routing policy).

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """[SPR-82.2] Paper-Scoped ChromaDB DNA Collections — dynamic collection lifecycle.
 
 Dedicated ChromaDB sync for paper-scoped DNA. Implements Story 82.2 of

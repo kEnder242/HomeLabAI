@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [BKM-024 / FEAT-658] Historical Reconciliation Verification Probe
 Probes acme_foyer_v5 on ws://127.0.0.1:8765 to verify that:

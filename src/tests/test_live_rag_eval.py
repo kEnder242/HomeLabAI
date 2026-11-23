@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-454/470] End-to-End Live Cognitive RAG Gauntlet (Story 63.3)
 

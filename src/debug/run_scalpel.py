@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 from atomic_patcher import apply_batch_refinement
 
 target = "HomeLabAI/src/lab_attendant.py"

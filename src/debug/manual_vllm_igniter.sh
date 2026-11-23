@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 # Standalone vLLM Launcher for Forensic Audit
 export VLLM_USE_V1=1
 export NCCL_P2P_DISABLE=1

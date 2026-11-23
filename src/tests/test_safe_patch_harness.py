@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-529] Verification Suite: Safe-Patch Subagent Certification Harness
 Asserts that patch_target.py was modified surgically by the subagent to include

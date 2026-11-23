@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-059 / FEAT-673 / Story 109.12] Unit & Integration Tests for Multi-Node Projection Dispatch.
 

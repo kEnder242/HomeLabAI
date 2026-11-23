@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 # Usage: ./release.sh <new_version>
 # Example: ./release.sh 2.0.1
 

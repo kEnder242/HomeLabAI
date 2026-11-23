@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
 # setup_ssh_immunity.sh — harden sshd against OOM kills and CPU starvation.

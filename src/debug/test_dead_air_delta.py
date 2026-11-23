@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-524] The Dead Air Delta Benchmark Harness
 Evaluates actor-to-actor handovers across Cold Boot, Waking, and Operational Hot states.

@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [SPR-47.1 Story 6] Foyer Liveness & Health Integration Test
 Validates that the Lab Attendant (FoyerRouter) on localhost:8765 responds

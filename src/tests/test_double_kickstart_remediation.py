@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """[FEAT-518] Unit Test: Double Kickstart Warmup Race Condition Remediation.
 Verifies that:
 1. bridge_signal_clean returns None when engine yields warming messages.

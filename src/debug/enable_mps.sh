@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 # 🤖 Acme Lab: NVIDIA MPS Enabler
 # Automates the setup of Multi-Process Service for the 2080 Ti node.
 

@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [BKM-034 Point 12] OpenAgent Swarm REST Dispatcher & Cloud Quota Sentinel
 Formalized launcher script for orchestrator-to-OpenAgent story delegation.

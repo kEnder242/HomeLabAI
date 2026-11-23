@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [BKM-024 / SPR-95.1 / Story 95.13] Live LLM Powerhouse Integration & Negative Validation Suite.
 

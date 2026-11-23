@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-529] Safe-Patch Harness Target File.
 This file serves as a canonical fixture for verifying that delegated subagents

@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [BKM-050] 5x5 GAUNTLET MANDATE:
 ⚠️ FORBIDDEN / DEPRECATED: Short back-to-back 50-second test scripts MUST NOT be used under the name '5x5'.

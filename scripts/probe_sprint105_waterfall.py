@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 Sprint 105 Physical Silicon Live Probe Gauntlet (BKM-024 / BKM-086).
 Directly probes the active acme_foyer_v5 daemon running on ws://127.0.0.1:8765

@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """Unit test verifying Story 101.3: Ambient Recall ICM Session Memory Lifecycle & Git Validity Filter."""
 
 import os

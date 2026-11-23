@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """infer_subagent_origin.py - Infer subagent ORIGIN types at creation time.
 
 **BKM-049:** When prompt has multiple subagents, assign first subagent to ORIGIN,

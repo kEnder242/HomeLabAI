@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 Projection Engine Package
 [FEAT-603 / FEAT-594 / FEAT-601 / FEAT-622 / WIS-487]

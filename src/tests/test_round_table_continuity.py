@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [STORY 112.70] Unit test: Round table continuity vector extraction and Deep Thought hydration.
 Tests for CONTINUITY_VECTOR (THREAD_CONTINUATION/TOPIC_PIVOT) extraction and UNTANGLING_DIRECTIVE injection.

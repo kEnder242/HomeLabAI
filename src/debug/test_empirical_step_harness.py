@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """[FEAT-668 / BKM-088 / BKM-090] Empirical Step Harness & Deferred Probe Rig.
 
 Executes pipeline stage probes against live physical silicon (:8088 / :11435)

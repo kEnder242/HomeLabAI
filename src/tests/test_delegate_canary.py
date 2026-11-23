@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """Canary tests for the OpenAgent swarm delegation mechanism (Story 999).
 
 Validates that the delegate.py launcher contract (payload structure and

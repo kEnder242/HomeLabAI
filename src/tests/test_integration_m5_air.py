@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [SPR-47.1 Story 9] M5 Air MLX Integration Test
 Validates that the M5 Air MLX endpoint at 192.168.1.46:8000 responds

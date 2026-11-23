@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [SPR-47.1 Story 10] Tri-Node Federated Integration Test
 Validates that Node Brain (vLLM, 127.0.0.1:8088), Node KENDER (Ollama,

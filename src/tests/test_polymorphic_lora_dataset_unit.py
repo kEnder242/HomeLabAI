@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 Unit Test Suite for [FEAT-582 / Story 86.5]:
 Polymorphic LoRA Dataset Invariant, Domain Completeness, and Balance.

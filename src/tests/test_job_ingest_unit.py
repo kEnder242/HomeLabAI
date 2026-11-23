@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """[FEAT-622 / BKM-070 / WIS-487] Hermetic unit tests for the offline job ingest CLI.
 
 No network, no clock, no LLM engine. Every assertion must hold offline.

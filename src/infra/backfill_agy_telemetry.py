@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 backfill_agy_telemetry.py
 [BKM-049 / BKM-020] Forensic & Calibrated Backfill of AGY Primary Conductor Telemetry.

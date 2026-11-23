@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-608 / FEAT-651 / LAB-110 / BKM-062] Unit Test: Round Table Accountability Probe Verification
 Hermetic unit tests for probe_round_table_accountability.py with genuine ledger integration.

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """[FEAT-671 / BKM-024 / Story 108.16] Physical Silicon End-to-End Handover & Feedback Certification.
 
 Connects to live physical daemon on port 8765, validates authenticated handshake,

@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-513 / SPR-69.4] Bicameral Local Delegation Canary
 A stub-and-fill target for certifying Atlas (4090) -> Sisyphus-Junior (M5 Air) delegation.

@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [BKM-034 Point 13] Automated Delegation Retrospective Stage
 Synthesizes a post-sprint DELEGATION_RETROSPECTIVE.md from the /tmp/delegate_story_*.log

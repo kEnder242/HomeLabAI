@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 ⚠️ DEPRECATED — LEGACY BOOT MONITOR ONLY
 This script is a legacy v1.0 polling monitor from Acme Lab v3.4.

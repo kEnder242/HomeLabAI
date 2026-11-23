@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-603] Projection Bones: Generic Document AST, Revision Tagging & Reconciliation
 Consolidated from HomeLabAI/src/curator/lens_service.py (grade_paper AST traversal)

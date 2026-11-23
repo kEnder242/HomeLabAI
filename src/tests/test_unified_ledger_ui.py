@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-526] Verification Suite for Story 70.10 Unified Nested Ledger
 Validates that renderBlackboardLedger nests subagent executions and renders batch cards.

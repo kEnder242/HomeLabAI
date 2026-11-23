@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 # --- vLLM 0.16.0 Laboratory Launcher (Plan A: SDPA Baseline) ---
 export VLLM_ATTENTION_BACKEND=TORCH_SDPA
 export NCCL_P2P_DISABLE=1 

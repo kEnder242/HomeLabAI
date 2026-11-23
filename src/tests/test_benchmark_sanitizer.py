@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-527] Verification Suite for Story 70.11 Sanitized Public Benchmark Exporter
 Validates that export_public_benchmarks.py strips LAN IPs, session tokens, and local paths.

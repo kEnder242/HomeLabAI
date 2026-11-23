@@ -1,3 +1,5 @@
+# Copyright 2025-2026 Jason Allred (Pre-Employment Snapshot: 2026-11-22)
+# SPDX-License-Identifier: Apache-2.0
 """
 [FEAT-635] Brain Information Gatekeeper & Curator Synergy Annotations Unit Tests
 Sprint: SPR-96.0 (Story 96.3)

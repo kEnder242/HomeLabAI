@@ -74,3 +74,16 @@ HomeLabAI maps academic literature directly to operational code modules (documen
 *   **Version 4.0:** Implemented the Resilience Downshift Ladder (vLLM -> Ollama -> Downshift -> Suspend) for hardware multi-tenancy.
 *   **Version 3.5:** Standardized asynchronous dispatch and VRAM guard controls.
 *   **January 2026:** Rebranded to HomeLabAI; introduced the Bicameral Mind split.
+
+---
+
+## License, Authorship & Intellectual Property Notice
+
+**Copyright 2025–2026 Jason Allred.**
+
+Licensed under the **Apache License, Version 2.0** (the "License"); you may not use this repository except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0.
+
+*   **Sole Author & Copyright Holder:** Jason Allred
+*   **Pre-Employment IP Snapshot Date:** `2026-11-22` (Tag: `v2026.11.22-pre-employment-freeze`)
+*   **Attribution & Alternative Licensing:** Attribution to **Jason Allred** must be preserved in accordance with the Apache 2.0 `NOTICE` and license terms. As sole copyright holder, Jason Allred retains all rights to offer this software, its architectures, and derivative works under alternative or commercial licenses.
+
